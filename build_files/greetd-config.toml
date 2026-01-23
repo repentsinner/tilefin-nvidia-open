@@ -6,5 +6,5 @@ vt = 1
 # Use tuigreet as the greeter with session selector
 # --sessions: show available sessions from wayland-sessions directory
 # --remember-session: remember last selected session
-command = "tuigreet --time --remember --remember-session --asterisks --sessions /usr/share/wayland-sessions"
+command = "tuigreet --time --remember --remember-session --asterisks --sessions /usr/share/wayland-sessions --session niri"
 user = "greeter"
