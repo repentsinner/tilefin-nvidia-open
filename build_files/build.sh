@@ -3,22 +3,21 @@
 set -ouex pipefail
 
 ###############################################################################
-# Hyprfin-DX Build Script
+# Tiled Bluefin-DX Build Script
 # Based on patterns from github.com/ashebanow/hyprblue
 ###############################################################################
 
 # Customize OS name for GRUB boot menu
-sed -i 's/^PRETTY_NAME=.*/PRETTY_NAME="Hyprfin-DX Nvidia Open"/' /usr/lib/os-release
+sed -i 's/^PRETTY_NAME=.*/PRETTY_NAME="Tilefin-DX Nvidia Open"/' /usr/lib/os-release
 if [ -f /etc/os-release ] && [ ! -L /etc/os-release ]; then
-    sed -i 's/^PRETTY_NAME=.*/PRETTY_NAME="Hyprfin-DX Nvidia Open"/' /etc/os-release
+    sed -i 's/^PRETTY_NAME=.*/PRETTY_NAME="Tilefin-DX Nvidia Open"/' /etc/os-release
 fi
 
 ###############################################################################
 # Package Arrays
-# Organized by function for easier maintenance
 ###############################################################################
 
-# GNOME components to remove (not needed for Hyprland)
+# GNOME components to remove (replaced by tiling compositors)
 GNOME_REMOVE=(
     gnome-shell
     mutter
@@ -37,72 +36,109 @@ GNOME_REMOVE=(
     gnome-shell-extension-launch-new-instance
 )
 
-# Hyprland compositor and core tools
-HYPR_CORE=(
+#------------------------------------------------------------------------------
+# Compositors
+#------------------------------------------------------------------------------
+
+COMPOSITOR_HYPRLAND=(
     hyprland
-    hyprlock
-    hypridle
     xdg-desktop-portal-hyprland
-    xdg-desktop-portal-gtk
 )
 
-# Wayland utilities and tools
-WAYLAND_UTILS=(
+COMPOSITOR_NIRI=(
+    niri
+)
+
+#------------------------------------------------------------------------------
+# Shared Wayland Environment
+#------------------------------------------------------------------------------
+
+WAYLAND_CORE=(
+    xdg-desktop-portal-gtk
     waybar
     fuzzel
     wlogout
+    hyprlock                  # Lock screen
+    hypridle                  # Idle daemon
+    mako                      # Notifications
+    swww                      # Wallpaper
+)
+
+WAYLAND_CLIPBOARD=(
+    wl-clipboard
+    wl-clip-persist           # Prevents clipboard clearing when source app closes
+    cliphist
+)
+
+WAYLAND_SCREENSHOT=(
     grim
     slurp
-    wl-clipboard
-    cliphist
-    swww
-    wdisplays
     wf-recorder
-    mako
 )
 
-# Desktop environment components
+#------------------------------------------------------------------------------
+# Desktop Applications
+#------------------------------------------------------------------------------
+
 DESKTOP_APPS=(
-    ptyxis
-    thunar
-    lxpolkit
-    rofimoji
-    nwg-bar
+    ptyxis                    # Terminal
+    thunar                    # File manager
+    gvfs                      # Virtual filesystem (network, MTP, trash)
+    tumbler                   # Thumbnail service
+    mpv                       # Media player
 )
 
-# System utilities
+DESKTOP_UTILITIES=(
+    lxpolkit                  # Polkit agent
+    rofimoji                  # Emoji picker
+    nwg-bar                   # Power menu
+    network-manager-applet    # Network tray icon
+    wdisplays                 # Display configuration
+)
+
+#------------------------------------------------------------------------------
+# System
+#------------------------------------------------------------------------------
+
 SYSTEM_UTILS=(
     pamixer
     brightnessctl
     greetd
     greetd-tuigreet
     nvidia-container-toolkit
+)
+
+SYSTEM_THEMING=(
     adw-gtk3-theme
 )
 
-# Niri compositor (scrollable tiling alternative to Hyprland)
-NIRI_PKGS=(
-    niri
-    swaylock              # niri uses swaylock for screen locking
-    swayidle              # idle daemon for niri (like hypridle for hyprland)
+FONTS=(
+    fira-code-fonts
+    fontawesome-fonts-all
+    google-noto-emoji-fonts
 )
 
-# Additional applications
+#------------------------------------------------------------------------------
+# Additional Applications
+#------------------------------------------------------------------------------
+
 ADDITIONAL_APPS=(
     antigravity
 )
 
-# COPR repositories to enable
+#------------------------------------------------------------------------------
+# Repositories
+#------------------------------------------------------------------------------
+
 COPR_REPOS=(
     solopasha/hyprland
+    leloubil/wl-clip-persist
 )
 
-# Additional RPM repositories (name::url format)
 RPM_REPOS=(
     "antigravity-rpm::https://us-central1-yum.pkg.dev/projects/antigravity-auto-updater-dev/antigravity-rpm"
 )
 
-# Flatpaks to install (avoid extra-data apps like Slack - they fail in container builds)
 FLATPAKS=(
     com.bitwarden.desktop
     dev.deedles.Trayscale
@@ -126,14 +162,12 @@ rpm-ostree override remove "${GNOME_REMOVE[@]}"
 # Configure Repositories
 ###############################################################################
 
-# Enable COPR repositories (error-tolerant for cross-version compatibility)
 echo "Enabling COPR repositories..."
 for repo in "${COPR_REPOS[@]}"; do
     echo "  Enabling COPR: $repo"
     dnf5 -y copr enable "$repo" || echo "  Warning: Failed to enable $repo (may not support this Fedora version)"
 done
 
-# Add additional RPM repositories
 echo "Adding RPM repositories..."
 for repo_entry in "${RPM_REPOS[@]}"; do
     repo_name="${repo_entry%%::*}"
@@ -150,16 +184,24 @@ done
 
 ###############################################################################
 # Install Packages
-# Single dnf5 install to minimize image layers
 ###############################################################################
 
-# Combine all package arrays
 ALL_PACKAGES=(
-    "${HYPR_CORE[@]}"
-    "${NIRI_PKGS[@]}"
-    "${WAYLAND_UTILS[@]}"
+    # Compositors
+    "${COMPOSITOR_HYPRLAND[@]}"
+    "${COMPOSITOR_NIRI[@]}"
+    # Wayland environment
+    "${WAYLAND_CORE[@]}"
+    "${WAYLAND_CLIPBOARD[@]}"
+    "${WAYLAND_SCREENSHOT[@]}"
+    # Desktop
     "${DESKTOP_APPS[@]}"
+    "${DESKTOP_UTILITIES[@]}"
+    # System
     "${SYSTEM_UTILS[@]}"
+    "${SYSTEM_THEMING[@]}"
+    "${FONTS[@]}"
+    # Additional
     "${ADDITIONAL_APPS[@]}"
 )
 
@@ -168,7 +210,6 @@ dnf5 install -y --setopt=install_weak_deps=False "${ALL_PACKAGES[@]}"
 
 ###############################################################################
 # Cleanup Repositories
-# Remove repos so they don't stay enabled in the final image
 ###############################################################################
 
 echo "Cleaning up repositories..."
@@ -242,11 +283,11 @@ systemctl enable greetd.service
 # Configure Wayland Environment
 ###############################################################################
 
-# Configure Electron apps to use native Wayland rendering for proper fractional scaling
+# Electron apps: use native Wayland for proper fractional scaling
 mkdir -p /etc/environment.d
 cp /ctx/electron-wayland.conf /etc/environment.d/electron-wayland.conf
 
-# Configure all Flatpak apps to use Wayland for proper fractional scaling
+# Flatpak apps: use Wayland for proper fractional scaling
 mkdir -p /etc/skel/.local/share/flatpak/overrides
 cat > /etc/skel/.local/share/flatpak/overrides/global <<EOF
 [Context]
@@ -257,47 +298,58 @@ ELECTRON_ENABLE_WAYLAND=1
 ELECTRON_OZONE_PLATFORM_HINT=wayland
 EOF
 
-# Configure trayscale to access tailscale socket
+# Trayscale: access tailscale socket
 cat > /etc/skel/.local/share/flatpak/overrides/dev.deedles.Trayscale <<EOF
 [Context]
 filesystems=/run/tailscale:rw;
 EOF
 
 ###############################################################################
-# Configure Hyprland
+# Configure Shared Components
+# (Used by both Hyprland and Niri)
 ###############################################################################
 
-# System-wide settings
-mkdir -p /etc/hypr
-cp /ctx/hyprland.conf /etc/hypr/hyprland.conf
-
-# Pre-populate Hyprland config for new users
+# hyprlock + hypridle (lock screen and idle management)
 mkdir -p /etc/skel/.config/hypr
-cp /ctx/hyprland.conf /etc/skel/.config/hypr/hyprland.conf
 cp /ctx/hyprlock.conf /etc/skel/.config/hypr/hyprlock.conf
 cp /ctx/hypridle.conf /etc/skel/.config/hypr/hypridle.conf
+cp /ctx/hypridle-niri.conf /etc/skel/.config/hypr/hypridle-niri.conf
+cp /ctx/hypridle-launch.sh /etc/skel/.config/hypr/hypridle-launch.sh
+chmod +x /etc/skel/.config/hypr/hypridle-launch.sh
 
-# Configure waybar
-mkdir -p /etc/skel/.config/waybar
+# waybar (status bar)
 mkdir -p /etc/skel/.config/waybar/scripts
-cp /ctx/waybar-config.json /etc/skel/.config/waybar/config
+cp /ctx/waybar-config-niri.json /etc/skel/.config/waybar/config-niri
+cp /ctx/waybar-config.json /etc/skel/.config/waybar/config-hyprland
 cp /ctx/waybar-style.css /etc/skel/.config/waybar/style.css
+cp /ctx/waybar-launch.sh /etc/skel/.config/waybar/launch.sh
+chmod +x /etc/skel/.config/waybar/launch.sh
 cp /ctx/update-check.sh /etc/skel/.config/waybar/scripts/update-check.sh
 chmod +x /etc/skel/.config/waybar/scripts/update-check.sh
 
-# Configure mako (minimal notifications)
+# mako (notifications)
 mkdir -p /etc/skel/.config/mako
 cp /ctx/mako.conf /etc/skel/.config/mako/config
+
+# XDG desktop portal (use GTK backend instead of GNOME)
+mkdir -p /etc/skel/.config/xdg-desktop-portal
+cp /ctx/portals.conf /etc/skel/.config/xdg-desktop-portal/portals.conf
+
+###############################################################################
+# Configure Hyprland
+###############################################################################
+
+mkdir -p /etc/hypr
+cp /ctx/hyprland.conf /etc/hypr/hyprland.conf
+cp /ctx/hyprland.conf /etc/skel/.config/hypr/hyprland.conf
 
 ###############################################################################
 # Configure Niri
 ###############################################################################
 
-# System-wide settings
 mkdir -p /etc/niri
 cp /ctx/niri-config.kdl /etc/niri/config.kdl
 
-# Pre-populate Niri config for new users
 mkdir -p /etc/skel/.config/niri
 cp /ctx/niri-config.kdl /etc/skel/.config/niri/config.kdl
 
@@ -308,7 +360,6 @@ cp /ctx/niri-config.kdl /etc/skel/.config/niri/config.kdl
 mkdir -p /etc/skel/.config/gtk-3.0
 mkdir -p /etc/skel/.config/gtk-4.0
 
-# GTK 3 settings
 cat > /etc/skel/.config/gtk-3.0/settings.ini <<EOF
 [Settings]
 gtk-theme-name=adw-gtk3-dark
@@ -318,7 +369,6 @@ gtk-font-name=Cantarell 11
 gtk-application-prefer-dark-theme=true
 EOF
 
-# GTK 4 settings
 cat > /etc/skel/.config/gtk-4.0/settings.ini <<EOF
 [Settings]
 gtk-theme-name=adw-gtk3-dark
@@ -328,7 +378,6 @@ gtk-font-name=Cantarell 11
 gtk-application-prefer-dark-theme=true
 EOF
 
-# GTK 2 settings (legacy apps)
 cat > /etc/skel/.gtkrc-2.0 <<EOF
 gtk-theme-name="adw-gtk3-dark"
 gtk-icon-theme-name="Adwaita"

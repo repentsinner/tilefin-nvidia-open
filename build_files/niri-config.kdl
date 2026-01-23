@@ -80,11 +80,12 @@ spawn-at-startup "sh" "-c" "systemctl --user set-environment SSH_AUTH_SOCK=$HOME
 spawn-at-startup "sh" "-c" "dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=niri SSH_ASKPASS"
 spawn-at-startup "lxpolkit"
 spawn-at-startup "mako"
-spawn-at-startup "waybar"
+spawn-at-startup "sh" "-c" "~/.config/waybar/launch.sh"
 spawn-at-startup "swww-daemon"
-spawn-at-startup "swayidle" "-w" "timeout" "300" "loginctl lock-session" "timeout" "600" "niri msg action power-off-monitors" "resume" "niri msg action power-on-monitors" "before-sleep" "loginctl lock-session" "lock" "swaylock -f"
+spawn-at-startup "sh" "-c" "~/.config/hypr/hypridle-launch.sh"
 spawn-at-startup "flatpak" "run" "dev.deedles.Trayscale"
 spawn-at-startup "flatpak" "run" "com.bitwarden.desktop"
+spawn-at-startup "nm-applet"
 
 // Keybindings
 // Mod = Super on TTY, Alt in nested window
@@ -173,6 +174,9 @@ binds {
 
     // Niri-specific features
     Mod+O { toggle-overview; }
+    Mod+Slash { show-hotkey-overlay; }
+    Alt+Tab { toggle-overview; }
+    Mod+Tab { focus-window-previous; }
 
     // Column presets
     Mod+R { switch-preset-column-width; }
@@ -189,16 +193,11 @@ binds {
 }
 
 // Window rules
+// Disable maximize-on-open behaviors globally (niri 25.11 workaround)
+// See: https://github.com/YaLTeR/niri/issues/2957
 window-rule {
-    match app-id="Bitwarden"
-    open-floating true
-    default-column-width { fixed 1200; }
-}
-
-window-rule {
-    match app-id="dev.deedles.Trayscale"
-    open-floating true
-    default-column-width { fixed 500; }
+    open-maximized false
+    open-maximized-to-edges false
 }
 
 // Cursor settings
