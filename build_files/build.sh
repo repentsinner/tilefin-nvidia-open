@@ -279,8 +279,11 @@ cp /ctx/hypridle.conf /etc/skel/.config/hypr/hypridle.conf
 
 # Configure waybar
 mkdir -p /etc/skel/.config/waybar
+mkdir -p /etc/skel/.config/waybar/scripts
 cp /ctx/waybar-config.json /etc/skel/.config/waybar/config
 cp /ctx/waybar-style.css /etc/skel/.config/waybar/style.css
+cp /ctx/update-check.sh /etc/skel/.config/waybar/scripts/update-check.sh
+chmod +x /etc/skel/.config/waybar/scripts/update-check.sh
 
 # Configure mako (minimal notifications)
 mkdir -p /etc/skel/.config/mako

@@ -30,6 +30,7 @@ window#waybar {
 #custom-bitwarden,
 #custom-tailscale,
 #custom-wireguard,
+#custom-update-check,
 #custom-power,
 #clock,
 #battery,
@@ -41,6 +42,16 @@ window#waybar {
 #window {
     padding: 0 10px;
     margin: 0 2px;
+}
+
+/* Update check module */
+#custom-update-check {
+    color: #6c7086;
+    font-size: 11px;
+}
+
+#custom-update-check.update-available {
+    color: #a6e3a1;
 }
 
 #battery.charging {

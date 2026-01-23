@@ -6,7 +6,7 @@
 
     "modules-left": ["hyprland/workspaces", "hyprland/window"],
     "modules-center": ["clock"],
-    "modules-right": ["custom/bitwarden", "custom/tailscale", "custom/wireguard", "pulseaudio", "network", "cpu", "memory", "battery", "tray", "custom/power"],
+    "modules-right": ["custom/update-check", "custom/bitwarden", "custom/tailscale", "custom/wireguard", "pulseaudio", "network", "cpu", "memory", "battery", "tray", "custom/power"],
 
     "hyprland/workspaces": {
         "disable-scroll": false,
@@ -103,5 +103,13 @@
         "format": "⏻",
         "tooltip-text": "Power Menu",
         "on-click": "nwg-bar"
+    },
+
+    "custom/update-check": {
+        "exec": "~/.config/waybar/scripts/update-check.sh",
+        "return-type": "json",
+        "interval": 3600,
+        "tooltip": true,
+        "on-click": "foot -e sudo bootc upgrade"
     }
 }

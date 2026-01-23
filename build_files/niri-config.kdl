@@ -77,7 +77,7 @@ environment {
 
 // Autostart applications
 spawn-at-startup "sh" "-c" "systemctl --user set-environment SSH_AUTH_SOCK=$HOME/.var/app/com.bitwarden.desktop/data/.bitwarden-ssh-agent.sock"
-spawn-at-startup "sh" "-c" "dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=niri"
+spawn-at-startup "sh" "-c" "dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=niri SSH_ASKPASS"
 spawn-at-startup "lxpolkit"
 spawn-at-startup "mako"
 spawn-at-startup "waybar"
@@ -106,20 +106,12 @@ binds {
     Mod+Right { focus-column-right; }
     Mod+Up { focus-window-up; }
     Mod+Down { focus-window-down; }
-    Mod+H { focus-column-left; }
-    Mod+J { focus-window-down; }
-    Mod+K { focus-window-up; }
-    Mod+L { focus-column-right; }
 
     // Window movement
     Mod+Shift+Left { move-column-left; }
     Mod+Shift+Right { move-column-right; }
     Mod+Shift+Up { move-window-up; }
     Mod+Shift+Down { move-window-down; }
-    Mod+Shift+H { move-column-left; }
-    Mod+Shift+J { move-window-down; }
-    Mod+Shift+K { move-window-up; }
-    Mod+Shift+L { move-column-right; }
 
     // Column width adjustment
     Mod+Minus { set-column-width "-10%"; }
