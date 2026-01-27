@@ -332,6 +332,13 @@ chmod +x /etc/skel/.config/waybar/scripts/update-check.sh
 mkdir -p /etc/skel/.config/mako
 cp /ctx/mako.conf /etc/skel/.config/mako/config
 
+# nwg-bar (power menu)
+mkdir -p /etc/skel/.config/nwg-bar
+cp /ctx/nwg-bar.json /etc/skel/.config/nwg-bar/bar.json
+
+# compositor-exit (logout script for both Hyprland and Niri)
+install -Dm755 /ctx/compositor-exit.sh /usr/bin/compositor-exit
+
 # XDG desktop portal (use GTK backend instead of GNOME)
 mkdir -p /etc/skel/.config/xdg-desktop-portal
 cp /ctx/portals.conf /etc/skel/.config/xdg-desktop-portal/portals.conf
@@ -340,8 +347,8 @@ cp /ctx/portals.conf /etc/skel/.config/xdg-desktop-portal/portals.conf
 # Configure Hyprland
 ###############################################################################
 
-mkdir -p /etc/hypr
-cp /ctx/hyprland.conf /etc/hypr/hyprland.conf
+mkdir -p /etc/xdg/hypr
+cp /ctx/hyprland.conf /etc/xdg/hypr/hyprland.conf
 cp /ctx/hyprland.conf /etc/skel/.config/hypr/hyprland.conf
 
 # Session wrapper (sets SSH_AUTH_SOCK before starting Hyprland)

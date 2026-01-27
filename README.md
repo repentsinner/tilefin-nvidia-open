@@ -176,6 +176,64 @@ Customize by editing `~/.config/hypr/hyprland.conf`. This file will be sourced b
 
 All keybindings can be customized in your user configuration file.
 
+## Package Management Guidelines
+
+On immutable, multi-user systems, package management requires more thought than traditional Linux. Homebrew's single-user macOS assumptions (shared `/home/linuxbrew` owned by one user, system-wide pollution) scale poorly. Prefer these methods in order:
+
+### Preference Hierarchy
+
+1. **System Image** (baked in or rpm-ostree layer)
+   - For: Compositors, system services, boot-critical tools
+   - Why: Atomic updates, rollback capability, consistent across users
+
+2. **Flatpak with `--user`**
+   - For: GUI applications
+   - Why: Sandboxed, per-user isolation, auto-updates, proper portal integration
+   - Example: `flatpak install --user flathub org.mozilla.firefox`
+
+3. **Native Installers** (vendor-provided, to `~/.local/bin`)
+   - For: CLI tools where vendor provides self-updating installer
+   - Why: Fastest updates, per-user, vendor-maintained
+   - Example: `claude install` (Anthropic's Claude Code)
+
+4. **Distrobox/Toolbox Containers**
+   - For: Development toolchains, language runtimes, mutable environments
+   - Why: Full isolation, disposable, doesn't touch host
+   - Example: `distrobox create --name dev --image fedora:latest`
+
+5. **AppImage**
+   - For: One-off tools, testing software
+   - Why: No install required, self-contained
+   - Downsides: No auto-update, no sandboxing, manual management
+
+6. **Homebrew** (last resort)
+   - For: When nothing else works
+   - Why not: Single-owner shared state, multi-user hostile, permission chaos
+   - If forced: Document who "owns" it, accept the tradeoffs
+
+### Bluefin's Homebrew Integration
+
+Bluefin provides convenience wrappers for homebrew via ujust:
+
+- **`ujust bluefin-cli`**: Installs curated CLI tools (atuin, starship, eza, fd, ripgrep, etc.)
+- **`ujust bbrew`**: Interactive installer for curated Brewfiles (IDE tools, k8s tools, fonts, etc.)
+
+This works well for **single-user systems** where Bluefin's target audience lives. The curated Brewfiles are sensible defaults and save setup time.
+
+**For multi-user systems**, the standard homebrew caveats apply—`/home/linuxbrew` is shared and owned by whoever set it up first. Consider containerizing homebrew in a distrobox if user isolation matters.
+
+### Multi-User Considerations
+
+- Flatpak `--user` installs are truly per-user (`~/.local/share/flatpak`)
+- Native installers to `~/.local/bin` are per-user
+- Homebrew's `/home/linuxbrew` is shared—one user owns it, others suffer
+- Distrobox containers are per-user by default
+- When in doubt, containerize it
+
+### ujust Recipe Updates
+
+ujust recipes are baked into the system image (`/usr/share/ublue-os/just/`). They update when the OS image updates via bootc, not separately. Run `ujust --list` to see available recipes.
+
 ## Community Resources
 
 - [Universal Blue Forums](https://universal-blue.discourse.group/)

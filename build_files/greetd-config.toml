@@ -5,5 +5,5 @@ vt = 1
 [default_session]
 # Use tuigreet as the greeter with session selector
 # F2 = session menu (arrow keys to select), F12 = power menu
-command = "tuigreet --time --remember --remember-session --asterisks --sessions /usr/share/wayland-sessions --cmd niri-tilefin-session --greeting 'F2: Sessions  |  F12: Power' --kb-sessions 2 --kb-power 12 --power-shutdown 'systemctl poweroff' --power-reboot 'systemctl reboot'"
+command = "tuigreet --time --remember --remember-session --asterisks --sessions /usr/share/wayland-sessions --greeting 'F2: Sessions  |  F12: Power' --kb-sessions 2 --kb-power 12 --power-shutdown 'systemctl poweroff' --power-reboot 'systemctl reboot'"
 user = "greeter"
