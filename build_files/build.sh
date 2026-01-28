@@ -347,6 +347,8 @@ cp /ctx/waybar-launch.sh /etc/skel/.config/waybar/launch.sh
 chmod +x /etc/skel/.config/waybar/launch.sh
 cp /ctx/update-check.sh /etc/skel/.config/waybar/scripts/update-check.sh
 chmod +x /etc/skel/.config/waybar/scripts/update-check.sh
+cp /ctx/notification-indicator.sh /etc/skel/.config/waybar/scripts/notification-indicator.sh
+chmod +x /etc/skel/.config/waybar/scripts/notification-indicator.sh
 
 # mako (notifications)
 mkdir -p /etc/skel/.config/mako

@@ -6,7 +6,7 @@
 
     "modules-left": ["hyprland/workspaces", "hyprland/window"],
     "modules-center": ["clock"],
-    "modules-right": ["custom/update-check", "custom/bitwarden", "custom/tailscale", "custom/wireguard", "pulseaudio", "network", "cpu", "memory", "battery", "tray", "custom/power"],
+    "modules-right": ["custom/update-check", "custom/notification", "custom/bitwarden", "custom/tailscale", "custom/wireguard", "pulseaudio", "network", "cpu", "memory", "battery", "tray", "custom/power"],
 
     "hyprland/workspaces": {
         "disable-scroll": false,
@@ -97,6 +97,15 @@
     "tray": {
         "icon-size": 20,
         "spacing": 10
+    },
+
+    "custom/notification": {
+        "exec": "~/.config/waybar/scripts/notification-indicator.sh",
+        "return-type": "json",
+        "interval": 5,
+        "tooltip": true,
+        "on-click": "makoctl restore",
+        "on-click-right": "makoctl dismiss --all"
     },
 
     "custom/power": {

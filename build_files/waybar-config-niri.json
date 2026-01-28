@@ -6,7 +6,7 @@
 
     "modules-left": ["niri/workspaces", "niri/window"],
     "modules-center": ["clock"],
-    "modules-right": ["custom/update-check", "pulseaudio", "network", "battery", "tray", "custom/power"],
+    "modules-right": ["custom/update-check", "custom/notification", "pulseaudio", "network", "battery", "tray", "custom/power"],
 
     "niri/workspaces": {
         "format": "{index}",
@@ -59,6 +59,15 @@
     "tray": {
         "icon-size": 20,
         "spacing": 10
+    },
+
+    "custom/notification": {
+        "exec": "~/.config/waybar/scripts/notification-indicator.sh",
+        "return-type": "json",
+        "interval": 5,
+        "tooltip": true,
+        "on-click": "makoctl restore",
+        "on-click-right": "makoctl dismiss --all"
     },
 
     "custom/power": {
