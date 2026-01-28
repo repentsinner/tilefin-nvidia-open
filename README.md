@@ -1,22 +1,18 @@
-# Tiling Bluefin-DX (Experimental)
+# Tilefin-DX
 
 A custom [bootc](https://github.com/bootc-dev/bootc) image based on Universal Blue's Bluefin-DX, replacing GNOME with tiling window managers for a keyboard-driven Wayland workflow with Nvidia GPU support.
 
-**Default Compositor**: Niri (Hyprland also available, selectable at login)
+## Opinionated Defaults
 
-**Wayland-Only**: This is a pure Wayland build with no XWayland/X11 compatibility layer. All applications must support native Wayland.
+This image makes deliberate choices that diverge from upstream Bluefin:
 
-## Compositor Migration History
-
-This project has evolved through several compositors seeking the best HiDPI and tiling experience:
-
-### Sway → Hyprland
-Sway lacks `wp-fractional-scale-v1` support, limiting it to integer-only scaling (1x, 2x). This is unusable on modern HiDPI displays where users need 1.25x or 1.5x scaling.
-
-### Hyprland → Niri (Current Default)
-While Hyprland solved the fractional scaling protocol support, it exhibited **scaling algorithm artifacts** - visible as repeated columns/rows of pixels at certain scale factors. Niri resolves these rendering issues and provides cleaner fractional scaling output.
-
-Both compositors remain installed and selectable at the login screen.
+| Choice | Rationale |
+|--------|-----------|
+| **Niri compositor** | Scrollable tiling, clean fractional scaling, official Fedora package. Hyprland available as fallback. |
+| **Wayland-only** | No XWayland/X11. Future-forward graphics stack. Apps that don't support Wayland won't work. |
+| **No Homebrew** | Bluefin targets single-user macOS-style laptops. We want a proper immutable system without `/home/linuxbrew` pollution. Use Flatpak, distrobox, or bake it into the image. |
+| **Minimal notifications** | Mako runs invisibly by default. A waybar indicator shows when notifications exist. No toasts stealing focus. |
+| **Focus-follows-mouse** | Enabled in Niri. Keyboard navigation still works independently. |
 
 ## Project Goals
 
@@ -233,6 +229,23 @@ This works well for **single-user systems** where Bluefin's target audience live
 ### ujust Recipe Updates
 
 ujust recipes are baked into the system image (`/usr/share/ublue-os/just/`). They update when the OS image updates via bootc, not separately. Run `ujust --list` to see available recipes.
+
+## Compositor Migration History
+
+This project has evolved through several compositors seeking the best HiDPI and tiling experience:
+
+### Sway → Hyprland
+Sway lacks `wp-fractional-scale-v1` support, limiting it to integer-only scaling (1x, 2x). This is unusable on modern HiDPI displays where users need 1.25x or 1.5x scaling.
+
+### Hyprland → Niri (Current Default)
+While Hyprland solved the fractional scaling protocol support, it has two significant issues:
+
+1. **Scaling artifacts** - visible as repeated columns/rows of pixels at certain fractional scale factors
+2. **Recursive splitting layout** - Hyprland's default tiling algorithm continuously subdivides columns for new windows, making layouts with more than 2-3 windows impractical (each window becomes a sliver)
+
+Niri resolves both issues with cleaner fractional scaling and a scrollable horizontal layout that doesn't degrade with window count.
+
+Both compositors remain installed and selectable at the login screen.
 
 ## Community Resources
 

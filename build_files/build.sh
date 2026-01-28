@@ -449,11 +449,12 @@ kargs = ["intel_iommu=on", "amd_iommu=on", "iommu=pt"]
 EOF
 
 # Enable verbose boot (show kernel and systemd messages instead of splash)
+# Note: bootc kargs.d only supports adding args, not deleting.
+# To remove 'quiet' and 'rhgb' from base image, run after first boot:
+#   rpm-ostree kargs --delete=quiet --delete=rhgb
 cat > /usr/lib/bootc/kargs.d/20-verbose-boot.toml <<'EOF'
-# Show boot messages instead of silent splash screen
-# Removes quiet/rhgb to display kernel output and systemd service status
+# Show systemd service status during boot
 kargs = ["systemd.show_status=1"]
-delete-kargs = ["quiet", "rhgb"]
 EOF
 
 echo "Build complete!"
