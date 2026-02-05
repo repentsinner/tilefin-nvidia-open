@@ -37,10 +37,6 @@ GNOME_REMOVE=(
     gnome-shell-extension-launch-new-instance
 )
 
-# Homebrew to remove (not needed - using native packages and flatpaks)
-HOMEBREW_REMOVE=(
-    ublue-brew
-)
 
 #------------------------------------------------------------------------------
 # Compositor
@@ -109,6 +105,9 @@ SYSTEM_UTILS=(
     nvidia-container-toolkit
     chezmoi                   # Dotfiles manager
     gh                        # GitHub CLI
+    zoxide                    # Smarter cd
+    eza                       # Modern ls
+    starship                  # Modern shell prompt
 )
 
 SYSTEM_THEMING=(
@@ -180,11 +179,17 @@ echo "Removing GNOME components..."
 rpm-ostree override remove "${GNOME_REMOVE[@]}"
 
 ###############################################################################
-# Remove Homebrew
+# Remove Homebrew Integration
+# (baked into bluefin-dx, not an RPM - must delete directly)
 ###############################################################################
 
-echo "Removing Homebrew..."
-rpm-ostree override remove "${HOMEBREW_REMOVE[@]}"
+echo "Removing Homebrew integration..."
+rm -f /etc/profile.d/brew.sh /etc/profile.d/brew-bash-completion.sh
+rm -f /usr/lib/systemd/system/brew-setup.service
+rm -f /usr/lib/systemd/system/brew-update.service
+rm -f /usr/lib/systemd/system/brew-upgrade.service
+rm -f /usr/lib/systemd/system/brew-update.timer
+rm -f /usr/lib/systemd/system/brew-upgrade.timer
 
 ###############################################################################
 # Configure Repositories
@@ -319,6 +324,13 @@ cat > /etc/skel/.local/share/flatpak/overrides/dev.deedles.Trayscale <<EOF
 [Context]
 filesystems=/run/tailscale:rw;
 EOF
+
+###############################################################################
+# Configure CLI Tools
+###############################################################################
+
+# Modern CLI aliases (eza, zoxide)
+cp /ctx/cli-aliases.sh /etc/profile.d/cli-aliases.sh
 
 ###############################################################################
 # Configure Wayland Components
