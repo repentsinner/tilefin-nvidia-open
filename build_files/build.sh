@@ -106,7 +106,6 @@ SYSTEM_UTILS=(
     chezmoi                   # Dotfiles manager
     gh                        # GitHub CLI
     zoxide                    # Smarter cd
-    eza                       # Modern ls
     starship                  # Modern shell prompt
 )
 
@@ -154,7 +153,6 @@ COPR_REPOS=(
     leloubil/wl-clip-persist
     pgaskin/looking-glass-client
     atim/starship
-    terjeros/eza
 )
 
 RPM_REPOS=(
@@ -284,6 +282,13 @@ curl -Lo /tmp/bws.zip "https://github.com/bitwarden/sdk/releases/download/bws-v1
 unzip /tmp/bws.zip -d /tmp
 install -Dm755 /tmp/bws /usr/bin/bws
 rm -rf /tmp/bws.zip /tmp/bws
+
+# eza (modern ls replacement - not in Fedora 42 repos)
+echo "Installing eza..."
+curl -Lo /tmp/eza.tar.gz "https://github.com/eza-community/eza/releases/download/v0.23.4/eza_x86_64-unknown-linux-gnu.tar.gz"
+tar -xzf /tmp/eza.tar.gz -C /tmp
+install -Dm755 /tmp/eza /usr/bin/eza
+rm -rf /tmp/eza.tar.gz /tmp/eza
 
 ###############################################################################
 # Configure Display Manager (greetd)
