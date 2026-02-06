@@ -27,15 +27,11 @@ window#waybar {
 }
 
 /* Apply consistent spacing to all modules */
-#custom-bitwarden,
-#custom-tailscale,
-#custom-wireguard,
 #custom-update-check,
 #custom-power,
+#custom-notification,
 #clock,
 #battery,
-#cpu,
-#memory,
 #network,
 #pulseaudio,
 #tray,

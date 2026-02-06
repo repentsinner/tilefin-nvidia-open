@@ -1,6 +1,6 @@
 # Tilefin-DX
 
-A custom [bootc](https://github.com/bootc-dev/bootc) image based on Universal Blue's Bluefin-DX, replacing GNOME with tiling window managers for a keyboard-driven Wayland workflow with Nvidia GPU support.
+A custom [bootc](https://github.com/bootc-dev/bootc) image based on Universal Blue's Bluefin-DX, replacing GNOME with the Niri tiling compositor for a keyboard-driven Wayland workflow with Nvidia GPU support.
 
 ## Opinionated Defaults
 
@@ -8,7 +8,7 @@ This image makes deliberate choices that diverge from upstream Bluefin:
 
 | Choice | Rationale |
 |--------|-----------|
-| **Niri compositor** | Scrollable tiling, clean fractional scaling, official Fedora package. Hyprland available as fallback. |
+| **Niri compositor** | Scrollable tiling, clean fractional scaling, official Fedora package. |
 | **Wayland-only** | No XWayland/X11. Future-forward graphics stack. Apps that don't support Wayland won't work. |
 | **No Homebrew** | Bluefin targets single-user macOS-style laptops. We want a proper immutable system without `/home/linuxbrew` pollution. Use Flatpak, distrobox, or bake it into the image. |
 | **Minimal notifications** | Mako runs invisibly by default. A waybar indicator shows when notifications exist. No toasts stealing focus. |
@@ -37,20 +37,17 @@ Niri's unique scrollable/infinite canvas workflow - windows tile horizontally an
 This image transforms Bluefin-DX into a tiling window manager system by:
 
 ### GNOME Removal
-Removes GNOME Shell, GDM, Mutter, and all GNOME Shell extensions to create a minimal base for tiling compositors.
+Removes GNOME Shell, GDM, Mutter, and all GNOME Shell extensions to create a minimal base for the Niri compositor.
 
 ### Compositor Installation
-Installs both **Niri** (default) and **Hyprland** compositors, selectable at the login screen:
+Installs the **Niri** compositor — a scrollable tiling compositor with clean fractional scaling and infinite canvas workflow.
 
-- **Niri** (recommended): Scrollable tiling compositor with clean fractional scaling and infinite canvas workflow
-- **Hyprland**: Dynamic tiling compositor with animations and effects (fallback option)
-
-Shared environment includes:
+Environment includes:
 - **Status Bar**: Waybar
 - **Application Launcher**: Fuzzel
 - **Terminal**: Ptyxis (GTK4, GPU-accelerated, native container integration)
-- **Lock Screen**: Hyprlock (both compositors)
-- **Idle Management**: hypridle (both compositors)
+- **Lock Screen**: Hyprlock
+- **Idle Management**: hypridle
 - **Notifications**: Mako
 - **Screenshots**: Grim and Slurp
 - **Screen Recording**: wf-recorder
@@ -62,7 +59,6 @@ Shared environment includes:
 
 ### Display Manager
 - Uses **greetd** with **tuigreet** instead of GDM
-- Session selector allows choosing between Niri and Hyprland at login
 - Remembers your last session choice
 - Properly configured for OSTree-based systems using sysusers.d and tmpfiles.d
 - Full Nvidia environment variables configured
@@ -74,7 +70,7 @@ Shared environment includes:
 
 ### System Configuration
 - **Polkit agent**: lxpolkit configured to autostart with the compositor
-- **Portals**: xdg-desktop-portal-gtk (shared) and xdg-desktop-portal-hyprland for proper Wayland integration
+- **Portals**: xdg-desktop-portal-gtk for proper Wayland integration
 - **Input settings**:
   - Caps Lock remapped to Control
   - Natural scrolling enabled for touchpads
@@ -144,17 +140,14 @@ WireGuard tools are pre-installed. Configure VPN connections via NetworkManager:
 - Use `nmcli` for CLI configuration
 - Or install `nm-connection-editor` for GUI setup
 
-WireGuard status is shown in the waybar status bar.
+WireGuard status can be monitored via NetworkManager.
 
 ## Configuration
 
-### Niri (Default)
+### Niri
 Customize by editing `~/.config/niri/config.kdl`. See the [Niri wiki](https://github.com/YaLTeR/niri/wiki) for configuration options.
 
-### Hyprland
-Customize by editing `~/.config/hypr/hyprland.conf`. This file will be sourced by the system configuration and can override any settings.
-
-### Key Bindings (Niri Default)
+### Key Bindings
 
 - **Super + Enter**: Launch terminal (ptyxis)
 - **Super + D**: Application launcher (fuzzel)
@@ -245,7 +238,7 @@ While Hyprland solved the fractional scaling protocol support, it has two signif
 
 Niri resolves both issues with cleaner fractional scaling and a scrollable horizontal layout that doesn't degrade with window count.
 
-Both compositors remain installed and selectable at the login screen.
+Hyprland has been removed from this image. Niri is the sole compositor.
 
 ## Community Resources
 

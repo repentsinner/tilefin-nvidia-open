@@ -276,6 +276,14 @@ fi
 # Install Additional Tools
 ###############################################################################
 
+# niri-desaturate (fork with desaturate window rule support)
+# Replaces the COPR niri package until upstream merges the PR
+# https://github.com/repentsinner/niri-desaturate
+echo "Installing niri-desaturate..."
+curl -Lo /tmp/niri-desaturate.rpm "https://github.com/repentsinner/niri-desaturate/releases/download/v25.11.0.1/niri-25.11.0.1-1.x86_64.rpm"
+dnf5 install -y --allowerasing /tmp/niri-desaturate.rpm
+rm -f /tmp/niri-desaturate.rpm
+
 # Bitwarden Secrets CLI
 echo "Installing Bitwarden Secrets CLI..."
 curl -Lo /tmp/bws.zip "https://github.com/bitwarden/sdk/releases/download/bws-v1.0.0/bws-x86_64-unknown-linux-gnu-1.0.0.zip"

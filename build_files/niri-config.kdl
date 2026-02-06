@@ -58,12 +58,14 @@ layout {
 
     focus-ring {
         width 2
-        active-color "#33ccff"
+        active-color "#44bb33"
         inactive-color "#595959"
     }
 
     border {
-        off
+        width 1
+        active-color "#222222"
+        inactive-color "#595959"
     }
 }
 
@@ -198,12 +200,19 @@ binds {
     Mod+Shift+E { quit; }
 }
 
+// Layer rules
+layer-rule {
+    match namespace="waybar"
+    saturation 0.0
+}
+
 // Window rules
 
 // Dim unfocused windows
 window-rule {
     match is-active=false
-    opacity 0.85
+    opacity 1.0
+    saturation 0.1
 }
 
 // Disable maximize-on-open behaviors globally (niri 25.11 workaround)
