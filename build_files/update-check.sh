@@ -37,6 +37,7 @@ BOOTED_IMAGE=$(echo "$STATUS_JSON" | jq -r '[.deployments[] | select(.booted)][0
 # Staged deployment
 STAGED_VERSION=$(echo "$STATUS_JSON" | jq -r '[.deployments[] | select(.staged)][0].version // empty')
 STAGED_TS=$(echo "$STATUS_JSON" | jq -r '[.deployments[] | select(.staged)][0].timestamp // empty')
+STAGED_IMAGE=$(echo "$STATUS_JSON" | jq -r '[.deployments[] | select(.staged)][0]."container-image-reference" // empty' | sed 's/^ostree-unverified-registry://')
 
 # Age of booted image
 AGE=""
@@ -46,13 +47,47 @@ fi
 
 if [ -n "$STAGED_VERSION" ] && [ "$STAGED_TS" != "$BOOTED_TS" ]; then
     STAGED_AGE=$(fuzzy_age $((NOW - STAGED_TS)))
+    BOOTED_AGE_SECS=$((NOW - BOOTED_TS))
     TEXT=" ${AGE}"
-    TOOLTIP="Booted: ${BOOTED_VERSION} (${AGE} ago)\nStaged: ${STAGED_VERSION} (${STAGED_AGE} ago)\nReboot to apply"
-    CLASS="update-available"
+
+    # Package diff between booted and staged deployments
+    # Output format: section headers (Upgraded:, Added:, etc.) followed by indented package lines
+    PKG_DIFF=$(rpm-ostree db diff 2>/dev/null)
+    count_section() { echo "$PKG_DIFF" | awk "/^${1}:/{f=1;next} /^[A-Z]/{f=0} f&&/^ /{c++} END{print c+0}"; }
+    PKG_UPGRADED=$(count_section Upgraded)
+    PKG_ADDED=$(count_section Added)
+    PKG_REMOVED=$(count_section Removed)
+    PKG_DOWNGRADED=$(count_section Downgraded)
+    PKG_TOTAL=$((PKG_ADDED + PKG_REMOVED + PKG_UPGRADED + PKG_DOWNGRADED))
+
+    PKG_SUMMARY=""
+    if [ "$PKG_TOTAL" -gt 0 ]; then
+        PKG_PARTS=""
+        [ "$PKG_UPGRADED" -gt 0 ] && PKG_PARTS="${PKG_UPGRADED} upgraded"
+        [ "$PKG_ADDED" -gt 0 ] && PKG_PARTS="${PKG_PARTS:+${PKG_PARTS}, }${PKG_ADDED} added"
+        [ "$PKG_REMOVED" -gt 0 ] && PKG_PARTS="${PKG_PARTS:+${PKG_PARTS}, }${PKG_REMOVED} removed"
+        [ "$PKG_DOWNGRADED" -gt 0 ] && PKG_PARTS="${PKG_PARTS:+${PKG_PARTS}, }${PKG_DOWNGRADED} downgraded"
+        PKG_SUMMARY="\nPackages: ${PKG_PARTS}"
+
+        # Show up to 5 upgraded package names
+        PKG_NAMES=$(echo "$PKG_DIFF" | awk '/^Upgraded:/{f=1;next} /^[A-Z]/{f=0} f&&/^ /{gsub(/^ +/,""); sub(/ .*/,""); print}' | head -5)
+        if [ -n "$PKG_NAMES" ]; then
+            PKG_LIST=$(echo "$PKG_NAMES" | sed 's/^/  /' | tr '\n' '|' | sed 's/|/\\n/g; s/\\n$//')
+            PKG_SUMMARY="${PKG_SUMMARY}\n${PKG_LIST}"
+            [ "$PKG_UPGRADED" -gt 5 ] && PKG_SUMMARY="${PKG_SUMMARY}\n  ... +$(( PKG_UPGRADED - 5 )) more"
+        fi
+    fi
+
+    TOOLTIP="Booted: ${BOOTED_VERSION} (${AGE} ago)\nStaged: ${STAGED_VERSION} (${STAGED_AGE} ago)\nImage: ${STAGED_IMAGE}${PKG_SUMMARY}\nReboot to apply"
+    if [ "$BOOTED_AGE_SECS" -ge 172800 ]; then
+        CLASS="update-stale"
+    else
+        CLASS="update-available"
+    fi
 else
     TEXT="${AGE}"
     TOOLTIP="Image: ${BOOTED_IMAGE}\nVersion: ${BOOTED_VERSION}\nBuilt: $(date -d @"$BOOTED_TS" '+%Y-%m-%d %H:%M' 2>/dev/null)"
-    CLASS="current"
+    CLASS=""
 fi
 
 echo "{\"text\": \"${TEXT}\", \"tooltip\": \"${TOOLTIP}\", \"class\": \"${CLASS}\"}"

@@ -40,14 +40,13 @@ window#waybar {
     margin: 0 2px;
 }
 
-/* Update check module */
-#custom-update-check {
-    color: #6c7086;
-    font-size: 11px;
+/* Update check module — inherits default color and font-size */
+#custom-update-check.update-available {
+    color: #fab387;
 }
 
-#custom-update-check.update-available {
-    color: #a6e3a1;
+#custom-update-check.update-stale {
+    color: #f38ba8;
 }
 
 #battery.charging {

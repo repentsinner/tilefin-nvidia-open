@@ -80,7 +80,6 @@
         "exec": "/usr/share/tilefin/scripts/update-check.sh",
         "return-type": "json",
         "interval": 3600,
-        "tooltip": true,
-        "on-click": "ptyxis -e sudo bootc upgrade"
+        "tooltip": true
     }
 }

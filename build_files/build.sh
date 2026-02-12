@@ -280,7 +280,7 @@ fi
 
 # VS Code: update to latest from Microsoft repo (base image may lag behind)
 echo "Updating VS Code..."
-dnf5 update -y code
+dnf5 update -y --enablerepo=code code
 
 # niri-desaturate (fork with desaturate window rule support)
 # Replaces the COPR niri package until upstream merges the PR
