@@ -358,10 +358,11 @@ cp /ctx/cli-aliases.sh /etc/profile.d/cli-aliases.sh
 ###############################################################################
 
 # hyprlock + hypridle (lock screen and idle management)
-# System-wide via /etc/hypr/ fallback (users can override in ~/.config/hypr/)
-mkdir -p /etc/hypr
-cp /ctx/hyprlock.conf /etc/hypr/hyprlock.conf
-cp /ctx/hypridle-niri.conf /etc/hypr/hypridle.conf
+# System-wide via XDG fallback (/etc/xdg/hypr/) — hyprutils findConfig() checks this path
+# Users can override in ~/.config/hypr/
+mkdir -p /etc/xdg/hypr
+cp /ctx/hyprlock.conf /etc/xdg/hypr/hyprlock.conf
+cp /ctx/hypridle-niri.conf /etc/xdg/hypr/hypridle.conf
 
 # waybar (status bar)
 # System-wide config via XDG fallback (/etc/xdg/waybar/)

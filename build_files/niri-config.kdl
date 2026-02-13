@@ -103,8 +103,8 @@ binds {
     Mod+D { spawn "fuzzel"; }
     Mod+Escape { spawn "fuzzel"; }
     Mod+E { spawn "thunar"; }
-    Mod+Semicolon { spawn "rofimoji" "--selector" "fuzzel" "--clipboarder" "wl-copy"; }  // Emoji picker
-    Mod+L { spawn "loginctl" "lock-session"; }  // Lock screen (systemd-integrated)
+    Mod+Period { spawn "rofimoji" "--selector" "fuzzel" "--clipboarder" "wl-copy"; }  // Emoji picker
+    Mod+L { spawn "sh" "-c" "pidof hyprlock || hyprlock"; }  // Lock screen
 
     // Window management
     Mod+Q { close-window; }
