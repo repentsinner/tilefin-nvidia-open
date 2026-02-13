@@ -1,6 +1,6 @@
 # Tilefin-DX
 
-A custom [bootc](https://github.com/bootc-dev/bootc) image based on Universal Blue's Bluefin-DX, replacing GNOME with the Niri tiling compositor for a keyboard-driven Wayland workflow with Nvidia GPU support.
+A custom [bootc](https://github.com/bootc-dev/bootc) image based on [Universal Blue](https://github.com/ublue-os)'s [Bluefin-DX](https://github.com/ublue-os/bluefin/), replacing GNOME with the [Niri](https://github.com/niri-wm/niri) tiling compositor for a keyboard-driven [Wayland](https://wayland.freedesktop.org/) workflow with Nvidia GPU support.
 
 ## Opinionated Defaults
 
@@ -18,16 +18,17 @@ This image makes deliberate choices that diverge from upstream Bluefin:
 
 This image aims to provide:
 
-1. **Reliability**: A stable, well-supported tiling window manager that works consistently
-2. **Visual Quality**: Proper high-DPI support and modern aesthetics (not terminal-era visuals)
-3. **Nvidia Compatibility**: Full GPU support for Nvidia hardware
-4. **Developer Workflow**: Preserve Bluefin-DX's development tools while adding tiling capabilities
-5. **Keyboard-Driven**: Efficient tiling window management
+1. **Reproducibility**: An reproducible, immutable system image. No system-wide homebrew
+2. **Reliability**: A stable, well-supported tiling window manager that works consistently
+3. **Visual Quality**: Proper high-DPI support and modern aesthetics (not terminal-era visuals)
+4. **Nvidia Compatibility**: Full GPU support for Nvidia hardware
+5. **Developer Workflow**: Preserve Bluefin-DX's development tools while adding tiling capabilities
+6. **Keyboard-Driven**: Efficient tiling window management
 
 ## Key Features
 
 ### Excellent High-DPI Support
-Niri provides clean fractional scaling without the pixel-repetition artifacts seen in some other compositors. Proper `wp-fractional-scale-v1` protocol support ensures crisp text and UI elements on modern displays.
+Niri provides clean fractional scaling without the pixel-repetition artifacts seen in some other compositors such as Hyprland. Proper `wp-fractional-scale-v1` protocol support ensures crisp text and UI elements on modern displays.
 
 ### Scrollable Tiling
 Niri's unique scrollable/infinite canvas workflow - windows tile horizontally and you scroll through them, rather than cramming everything onto a fixed screen. Great for ultrawide monitors and focus-oriented workflows.
@@ -38,9 +39,6 @@ This image transforms Bluefin-DX into a tiling window manager system by:
 
 ### GNOME Removal
 Removes GNOME Shell, GDM, Mutter, and all GNOME Shell extensions to create a minimal base for the Niri compositor.
-
-### Compositor Installation
-Installs the **Niri** compositor — a scrollable tiling compositor with clean fractional scaling and infinite canvas workflow.
 
 Environment includes:
 - **Status Bar**: Waybar
@@ -118,22 +116,6 @@ sudo reboot
 
 ## Post-Installation Setup
 
-### Tailscale VPN (Optional)
-
-Tailscale is pre-installed and enabled. To set up the GUI:
-
-1. **Set your user as operator** (allows GUI control without sudo):
-   ```bash
-   sudo tailscale set --operator=$USER
-   ```
-
-2. **Install trayscale GUI** (already configured to auto-start):
-   ```bash
-   flatpak install flathub dev.deedles.Trayscale
-   ```
-
-The trayscale icon will appear in your system tray for easy VPN management.
-
 ### WireGuard VPN
 
 WireGuard tools are pre-installed. Configure VPN connections via NetworkManager:
@@ -149,21 +131,7 @@ Customize by editing `~/.config/niri/config.kdl`. See the [Niri wiki](https://gi
 
 ### Key Bindings
 
-- **Super + Enter**: Launch terminal (ptyxis)
-- **Super + D**: Application launcher (fuzzel)
-- **Super + Q**: Close window
-- **Super + Shift + E**: Exit Niri
-- **Super + E**: File manager (Thunar)
-- **Super + V**: Toggle floating
-- **Super + Arrow Keys**: Move focus
-- **Super + 1-9**: Switch workspace
-- **Super + Shift + 1-9**: Move column to workspace
-- **Super + R**: Cycle preset column widths (1/3, 1/2, 2/3)
-- **Super + F**: Maximize column
-- **Super + O**: Toggle overview
-- **Print**: Screenshot selection
-
-All keybindings can be customized in your user configuration file.
+- **Super + /**: View current key bindings
 
 ## Package Management Guidelines
 

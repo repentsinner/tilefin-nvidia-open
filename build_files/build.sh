@@ -193,6 +193,9 @@ rm -f /usr/lib/systemd/system/brew-update.service
 rm -f /usr/lib/systemd/system/brew-upgrade.service
 rm -f /usr/lib/systemd/system/brew-update.timer
 rm -f /usr/lib/systemd/system/brew-upgrade.timer
+rm -f /usr/lib/systemd/system-preset/01-homebrew.preset
+rm -rf /usr/share/ublue-os/homebrew
+rmdir /home/linuxbrew 2>/dev/null || true
 
 ###############################################################################
 # Configure Repositories
