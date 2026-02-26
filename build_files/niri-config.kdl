@@ -215,6 +215,12 @@ window-rule {
     saturation 0.1
 }
 
+// VS Code: open at 1600 logical pixels wide (clamped to display width)
+window-rule {
+    match app-id=r#"^code"#
+    default-column-width { fixed 1600; }
+}
+
 // Disable maximize-on-open behaviors globally (niri 25.11 workaround)
 // See: https://github.com/YaLTeR/niri/issues/2957
 window-rule {
