@@ -49,6 +49,7 @@ setup-user image="":
     if [ -n "$FLATPAK_APPS" ]; then
         echo ""
         echo "==> Installing Flatpak apps..."
+        flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
         FLATPAK_IDS=()
         echo "$FLATPAK_APPS" | grep -q "Firefox"   && FLATPAK_IDS+=("org.mozilla.firefox")
         echo "$FLATPAK_APPS" | grep -q "Bitwarden" && FLATPAK_IDS+=("com.bitwarden.desktop")
