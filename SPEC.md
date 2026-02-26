@@ -2,9 +2,10 @@
 
 ## Purpose
 
-Tilefin-DX is an immutable bootc/OSTree system image based on
-Bluefin-DX. It replaces GNOME with the Niri tiling compositor for a
-keyboard-driven Wayland desktop on Nvidia hardware.
+Tilefin-DX is an immutable bootc/OSTree system image that provides a
+keyboard-driven Wayland desktop on Nvidia hardware. It layers the Niri
+tiling compositor, a Wayland session stack, and desktop applications on
+top of Universal Blue's base-nvidia image.
 
 The image provides desktop infrastructure only: compositor, session
 management, display manager, theming, and system services. User tools
@@ -13,11 +14,19 @@ installers — not in the image.
 
 ## Base image
 
-`ghcr.io/ublue-os/bluefin-dx-nvidia-open:gts`
+`ghcr.io/ublue-os/base-nvidia:gts`
 
-Bluefin-DX provides Fedora, Nvidia drivers (open kernel modules),
-Podman, distrobox, VS Code, and container development tooling. This
-image layers Niri and supporting Wayland infrastructure on top.
+The base image provides Fedora (bootc/OSTree), Nvidia open kernel
+modules, nvidia-container-toolkit, Podman, distrobox, just/ujust,
+Flatpak with Flathub, media codecs (ffmpeg/libva via negativo17),
+XWayland, xdg-desktop-portal, and xdg-desktop-portal-gtk. It ships no
+desktop environment or display manager.
+
+Rationale: the previous base (`bluefin-dx-nvidia-open`) included GNOME,
+Homebrew, Docker, Cockpit, ROCm, Samba/AD, and other packages the image
+immediately removed or never used. Rebasing on base-nvidia eliminates
+the install-then-strip cycle, reduces image size, and makes every
+installed package an explicit choice.
 
 ## Image boundary
 
@@ -42,25 +51,17 @@ elsewhere:
 
 ### S1: GNOME removal
 
-*Status: complete — PR #1, 2024-10-15*
+*Status: obsolete — base-nvidia ships no desktop environment*
 
-The image removes GNOME Shell, GDM, Mutter, Nautilus, and all GNOME
-Shell extensions. These are replaced by Niri and supporting Wayland
-components.
-
-Rationale: Niri cannot coexist with GNOME Shell. GDM is replaced by
-greetd. Nautilus is replaced by Thunar.
+Previously required when the base image was Bluefin-DX (Silverblue).
+The base-nvidia image has no GNOME components to remove.
 
 ### S2: Homebrew removal
 
-*Status: complete — PR #1, 2024-10-15*
+*Status: obsolete — base-nvidia ships no Homebrew integration*
 
-Bluefin-DX ships Homebrew integration (profile scripts, systemd units,
-presets). The image removes all Homebrew artifacts.
-
-Rationale: Homebrew's single-user macOS model conflicts with immutable,
-multi-user systems. Distrobox and Flatpak cover all use cases without
-`/home/linuxbrew` pollution.
+Previously required when the base image was Bluefin-DX. The base-nvidia
+image has no Homebrew artifacts.
 
 ### S3: Niri compositor
 
@@ -93,13 +94,16 @@ The image provides a complete Wayland desktop environment:
 - **Screenshots**: grim, slurp, wf-recorder.
 - **App launcher**: Fuzzel.
 - **Logout**: wlogout, nwg-bar, compositor-exit script.
-- **Desktop portal**: xdg-desktop-portal-gtk (replaces GNOME backend).
+- **Desktop portal**: xdg-desktop-portal-gtk (inherited from base image;
+  portals.conf selects GTK backend over GNOME).
 
 ### S5: Display manager
 
 *Status: complete — PR #1, 2024-10-15*
 
-greetd with tuigreet replaces GDM. Config at `/etc/greetd/config.toml`.
+greetd with tuigreet provides graphical session login. The base image
+enables `getty@tty1` (console login); greetd overrides this. Config at
+`/etc/greetd/config.toml`.
 A tmpfiles.d entry creates `/var/lib/greetd` at boot (the package's
 tmpfiles.d only sets ownership, doesn't create the directory).
 
@@ -112,7 +116,8 @@ tmpfiles.d only sets ownership, doesn't create the directory).
 - **Media**: mpv.
 - **Polkit**: lxpolkit.
 - **Utilities**: rofimoji, network-manager-applet, wdisplays.
-- **Flatpaks**: Bitwarden (password manager), Trayscale (Tailscale GUI).
+- **Shell**: fish.
+- **Flatpaks**: Bitwarden (password manager).
 
 ### S7: Theming
 
@@ -128,7 +133,6 @@ via `/etc/skel/.gtkrc-2.0`. Fonts: Fira Code, FontAwesome, Noto Emoji.
 Enabled at build time:
 
 - `podman.socket` — container management.
-- `tailscaled.service` — Tailscale VPN.
 - `libvirtd.socket` — VM management (socket-activated).
 - `greetd.service` — display manager.
 - `rpm-ostreed-automatic.timer` — auto-stage image upgrades.
@@ -155,7 +159,6 @@ GPU passthrough support:
   `/etc/environment.d/electron-wayland.conf`.
 - System-wide Flatpak overrides enable Wayland socket and Electron
   Wayland flags.
-- Trayscale Flatpak gets filesystem access to `/run/tailscale`.
 
 ### S11: Shell aliases
 
@@ -255,9 +258,9 @@ exported_bins="/usr/bin/gh /usr/bin/chezmoi /usr/bin/direnv /usr/bin/zoxide /usr
 exported_bins_path="~/.local/bin"
 ```
 
-`nvidia=true` matches the base image (`bluefin-dx-nvidia-open`), which
-ships Nvidia open kernel modules and the container toolkit. The userbox
-inherits GPU access for tools that need it.
+`nvidia=true` matches the base image (`base-nvidia`), which ships Nvidia
+open kernel modules and the container toolkit. The userbox inherits GPU
+access for tools that need it.
 
 Rationale: breaks the chezmoi↔userbox bootstrap cycle. Chezmoi lives
 inside the userbox, so it cannot seed its own `.ini`. The skel file
@@ -310,11 +313,47 @@ packaging and Niri/Wayland compatibility.*
 
 ### S14: VS Code
 
-*Status: complete — PR #1, 2024-10-15*
+*Status: in progress*
 
-VS Code ships in the bluefin-dx base image. The build updates it to the
-latest version from Microsoft's repo. VS Code is a host application
-that attaches to containers — it does not belong in the userbox.
+The image installs VS Code from Microsoft's yum repository. The build
+adds the repo and installs the `code` package directly.
+
+Rationale: the previous base (Bluefin-DX) provided VS Code; base-nvidia
+does not. VS Code is a host application that attaches to containers — it
+does not belong in the userbox.
+
+### S15: Rebase from Bluefin-DX to base-nvidia
+
+*Status: in progress*
+
+#### Problem
+
+The image based on Bluefin-DX (`bluefin-dx-nvidia-open:gts`) pulled in
+four layers of upstream packages (ublue-os/main → Bluefin base →
+Bluefin-DX) then immediately stripped most of them: GNOME Shell, GDM,
+Homebrew, and all GNOME extensions. Packages never referenced by the
+build — Docker, Cockpit, ROCm, Incus/LXC, Samba/AD/Kerberos, backup
+tools — added image size and attack surface for no benefit.
+
+#### Design
+
+The image rebases onto `ghcr.io/ublue-os/base-nvidia:gts`, the lowest
+Universal Blue layer that includes Nvidia drivers. This image ships no
+desktop environment, no display manager, and no application-layer
+packages.
+
+Changes from the previous base:
+
+- GNOME removal (S1) and Homebrew removal (S2) become no-ops.
+- VS Code (S14) is installed directly from Microsoft's yum repo.
+- `nvidia-container-toolkit` is no longer installed by the build — the
+  base image provides it.
+- `xdg-desktop-portal-gtk` is no longer installed by the build — the
+  base image provides it.
+- `tailscaled.service` is no longer enabled. Trayscale Flatpak and its
+  `/run/tailscale` override are removed.
+- `fish` is added to the package install (previously inherited from
+  Bluefin base).
 
 ## Out of scope
 
@@ -324,5 +363,5 @@ that attaches to containers — it does not belong in the userbox.
 - **Userbox Containerfile**: Lives in repentsinner/userbox. This spec
   covers the image-side changes only (R12.1–R12.5).
 - **Flutter/FVM**: Future addition to the userbox Containerfile.
-- **Flatpak apps beyond Bitwarden/Trayscale**: User-installed via
+- **Flatpak apps beyond Bitwarden**: User-installed via
   `flatpak install --user`.

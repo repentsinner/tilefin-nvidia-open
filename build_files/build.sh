@@ -4,7 +4,7 @@ set -ouex pipefail
 
 ###############################################################################
 # Tilefin-DX Build Script
-# Niri compositor on Bluefin-DX
+# Niri compositor on Universal Blue base-nvidia
 ###############################################################################
 
 # Customize OS name for GRUB boot menu
@@ -16,27 +16,6 @@ fi
 ###############################################################################
 # Package Arrays
 ###############################################################################
-
-# GNOME components to remove (replaced by Niri)
-GNOME_REMOVE=(
-    gnome-shell
-    mutter
-    gdm
-    gnome-initial-setup
-    gnome-shell-extension-gsconnect
-    gnome-shell-extension-common
-    gnome-shell-extension-window-list
-    nautilus
-    nautilus-gsconnect
-    gnome-session-wayland-session
-    gnome-classic-session
-    gnome-browser-connector
-    gnome-shell-extension-supergfxctl-gex
-    gnome-shell-extension-apps-menu
-    gnome-shell-extension-places-menu
-    gnome-shell-extension-launch-new-instance
-)
-
 
 #------------------------------------------------------------------------------
 # Compositor
@@ -51,7 +30,6 @@ COMPOSITOR=(
 #------------------------------------------------------------------------------
 
 WAYLAND_CORE=(
-    xdg-desktop-portal-gtk
     waybar
     fuzzel
     wlogout
@@ -83,6 +61,7 @@ DESKTOP_APPS=(
     gvfs                      # Virtual filesystem (network, MTP, trash)
     tumbler                   # Thumbnail service
     mpv                       # Media player
+    fish                      # Shell
 )
 
 DESKTOP_UTILITIES=(
@@ -102,7 +81,6 @@ SYSTEM_UTILS=(
     brightnessctl
     greetd
     greetd-tuigreet
-    nvidia-container-toolkit
 )
 
 SYSTEM_THEMING=(
@@ -144,7 +122,6 @@ COPR_REPOS=(
 
 FLATPAKS=(
     com.bitwarden.desktop
-    dev.deedles.Trayscale
 )
 
 ###############################################################################
@@ -152,32 +129,8 @@ FLATPAKS=(
 ###############################################################################
 
 systemctl enable podman.socket
-systemctl enable tailscaled.service
 systemctl enable libvirtd.socket          # VM management (socket-activated)
 systemctl enable rpm-ostreed-automatic.timer  # Auto-stage image upgrades
-
-###############################################################################
-# Remove GNOME Components
-###############################################################################
-
-echo "Removing GNOME components..."
-rpm-ostree override remove "${GNOME_REMOVE[@]}"
-
-###############################################################################
-# Remove Homebrew Integration
-# (baked into bluefin-dx, not an RPM - must delete directly)
-###############################################################################
-
-echo "Removing Homebrew integration..."
-rm -f /etc/profile.d/brew.sh /etc/profile.d/brew-bash-completion.sh
-rm -f /usr/lib/systemd/system/brew-setup.service
-rm -f /usr/lib/systemd/system/brew-update.service
-rm -f /usr/lib/systemd/system/brew-upgrade.service
-rm -f /usr/lib/systemd/system/brew-update.timer
-rm -f /usr/lib/systemd/system/brew-upgrade.timer
-rm -f /usr/lib/systemd/system-preset/01-homebrew.preset
-rm -rf /usr/share/ublue-os/homebrew
-rmdir /home/linuxbrew 2>/dev/null || true
 
 ###############################################################################
 # Configure Repositories
@@ -242,9 +195,12 @@ fi
 # Install Additional Tools
 ###############################################################################
 
-# VS Code: update to latest from Microsoft repo (base image may lag behind)
-echo "Updating VS Code..."
-dnf5 update -y --enablerepo=code code
+# VS Code: install from Microsoft repo (not in base image)
+echo "Installing VS Code..."
+rpm --import https://packages.microsoft.com/keys/microsoft.asc
+dnf5 config-manager addrepo --from-repofile=https://packages.microsoft.com/yumrepos/vscode/config.repo
+dnf5 install -y code
+dnf5 config-manager setopt code.enabled=0
 
 # niri-desaturate (fork with desaturate window rule support)
 # Replaces the COPR niri package until upstream merges the PR
@@ -289,11 +245,6 @@ sockets=wayland;
 [Environment]
 ELECTRON_ENABLE_WAYLAND=1
 ELECTRON_OZONE_PLATFORM_HINT=wayland
-EOF
-
-cat > /var/lib/flatpak/overrides/dev.deedles.Trayscale <<EOF
-[Context]
-filesystems=/run/tailscale:rw;
 EOF
 
 ###############################################################################
