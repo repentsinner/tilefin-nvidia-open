@@ -161,9 +161,11 @@ GPU passthrough support:
 - System-wide Flatpak overrides enable Wayland socket and Electron
   Wayland flags.
 
-### S11: Shell aliases
+### S11: Shell configuration
 
 *Status: complete — PR #1, 2024-10-15*
+
+#### R11.1: Tool aliases
 
 `/etc/profile.d/tool-aliases.sh` (bash) and
 `/etc/fish/conf.d/tool-aliases.fish` (fish) provide aliases and shell
@@ -171,6 +173,18 @@ hooks for CLI tools regardless of origin (userbox exports or native
 installers): bat, eza, zoxide, starship, direnv, and mise. All entries
 are guarded (`command -v` in bash, `command -sq` in fish) and silently
 skipped when the tool is absent.
+
+#### R11.2: User-local bin directory in PATH
+
+`/etc/profile.d/local-path.sh` (bash) and
+`/etc/fish/conf.d/local-path.fish` (fish) prepend `~/.local/bin` to
+`PATH`. The path expands per-user at shell startup. Both scripts are
+idempotent — bash guards against duplicate entries, fish uses
+`fish_add_path`.
+
+Rationale: userbox exports (R12.4) and native installers (R12.5) place
+binaries in `~/.local/bin`. Without this PATH entry, those binaries are
+unreachable from interactive shells.
 
 ### S12: Userbox — move user tools to distrobox
 
@@ -268,8 +282,10 @@ provides a working default; chezmoi overwrites it once available.
 
 #### R12.5: ujust setup-user recipe
 
-`tilefin.just` provides a `setup-user` recipe that provisions a new
-user's development environment in one step:
+`tilefin.just` is installed as `/usr/share/ublue-os/just/60-custom.just`,
+the extension point that the base image's ujust justfile imports. It
+provides a `setup-user` recipe that provisions a new user's development
+environment in one step:
 
 The recipe presents three interactive gum menus (all items selected by
 default, user deselects with space):
@@ -441,6 +457,60 @@ tags. Semver tags are additive — they appear only when a release is cut.
 
 Version history: 0.1.0 (Sway on Bluefin-DX), 0.2.0 (Hyprland on Bluefin-DX), 0.3.0 (Niri on
 Bluefin-DX), 0.4.0 (Niri on base-nvidia).
+
+### S18: Install media
+
+*Status: in progress*
+
+#### Problem
+
+The image is consumed via `bootc switch` from a running Fedora system.
+This requires an existing installation to migrate from — there is no
+path to bare-metal install on a new machine.
+
+#### Design
+
+bootc-image-builder (BIB) produces installable disk images from the
+container image. Two ISO types serve different use cases:
+
+| Type | Config | Network | Use case |
+|---|---|---|---|
+| `iso` (bootc-installer) | `disk_config/iso.toml` | Not required | Offline install from USB/Ventoy. Image embedded in ISO. |
+| `anaconda-iso` | `disk_config/anaconda-iso.toml` | Required | Interactive Anaconda installer. Pulls image from GHCR at install time. |
+
+Offline-first: the `iso` type is the primary install path. A user
+copies the ISO to a Ventoy USB drive and boots it. No network, no
+intermediate OS, no migration step.
+
+The Anaconda ISO provides a graphical installer with disk, user,
+timezone, and network configuration. It suits environments where
+network access is available and interactive setup is preferred.
+
+Both types use a 20 GiB minimum root filesystem on btrfs.
+
+#### R18.1: Offline bootc-installer ISO
+
+BIB produces an `iso` type image that embeds the full container image.
+The ISO is bootable without network access.
+
+#### R18.2: Anaconda ISO
+
+BIB produces an `anaconda-iso` type image with a graphical Anaconda
+installer. The RHEL Subscription module is disabled. All other
+Anaconda modules use their defaults.
+
+#### R18.3: CI builds both types
+
+The `build-disk.yml` workflow matrix includes `iso` and `anaconda-iso`
+alongside `qcow2`. Each type maps to its own config file. Builds run
+on `workflow_dispatch` and on PRs that touch disk config or the
+workflow itself.
+
+#### R18.4: Local build recipes
+
+The Justfile provides `build-iso` (offline) and `build-anaconda-iso`
+(network) recipes. Both delegate to BIB via `_build-bib` with the
+appropriate type and config file.
 
 ## Out of scope
 

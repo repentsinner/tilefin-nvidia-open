@@ -238,8 +238,10 @@ EOF
 
 # Tool aliases and shell hooks (resolved at runtime from $PATH)
 cp /ctx/tool-aliases.sh /etc/profile.d/tool-aliases.sh
+cp /ctx/local-path.sh /etc/profile.d/local-path.sh
 mkdir -p /etc/fish/conf.d
 cp /ctx/tool-aliases.fish /etc/fish/conf.d/tool-aliases.fish
+cp /ctx/local-path.fish /etc/fish/conf.d/local-path.fish
 
 # Default userbox distrobox declaration (bootstrap for new accounts)
 mkdir -p /etc/skel/.config/distrobox
@@ -369,6 +371,6 @@ EOF
 ###############################################################################
 
 echo "Installing custom ujust recipes..."
-cp /ctx/tilefin.just /usr/share/ublue-os/just/60-tilefin.just
+cp /ctx/tilefin.just /usr/share/ublue-os/just/60-custom.just
 
 echo "Build complete!"
