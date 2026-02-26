@@ -1,5 +1,5 @@
-# Aliases and shell hooks for userbox tools (distrobox-exported to ~/.local/bin)
-# All entries guarded with command -sq — silently skipped when userbox is absent
+# Aliases and shell hooks for CLI tools (userbox exports and native installers)
+# All entries guarded with command -sq — silently skipped when tool is absent
 
 # bat: syntax-highlighting pager (replaces cat for interactive use)
 if command -sq bat
@@ -27,4 +27,9 @@ end
 # direnv: per-directory environment variables
 if status is-interactive; and command -sq direnv
     direnv hook fish | source
+end
+
+# mise: per-project runtime version manager (activates when .mise.toml exists)
+if status is-interactive; and command -sq mise
+    mise activate fish | source
 end

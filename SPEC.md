@@ -164,11 +164,12 @@ GPU passthrough support:
 
 *Status: complete — PR #1, 2024-10-15*
 
-`/etc/profile.d/userbox-aliases.sh` (bash) and
-`/etc/fish/conf.d/userbox-aliases.fish` (fish) provide aliases and shell
-hooks for tools exported from the userbox: bat, eza, zoxide, starship,
-and direnv. All entries are guarded (`command -v` in bash, `command -sq`
-in fish) and silently skipped when the userbox is absent.
+`/etc/profile.d/tool-aliases.sh` (bash) and
+`/etc/fish/conf.d/tool-aliases.fish` (fish) provide aliases and shell
+hooks for CLI tools regardless of origin (userbox exports or native
+installers): bat, eza, zoxide, starship, direnv, and mise. All entries
+are guarded (`command -v` in bash, `command -sq` in fish) and silently
+skipped when the tool is absent.
 
 ### S12: Userbox — move user tools to distrobox
 
@@ -207,9 +208,10 @@ layers of the same file, each more specific than the last:
 1. **Skel default** — the image ships
    `/etc/skel/.config/distrobox/userbox.ini` with a default image path.
    Every new user account gets a working `.ini` at account creation.
-2. **ujust override** — `ujust setup-userbox [image]` accepts an
-   optional image argument, rewrites the `.ini`, and runs assembly.
-   Useful for first boot or switching images.
+2. **ujust override** — `ujust setup-user [image]` accepts an optional
+   image argument, rewrites the `.ini`, and runs assembly. Also installs
+   native CLI tools (Claude Code, uv). Useful for first boot or
+   switching images.
 3. **Chezmoi steady-state** — once the userbox is running, chezmoi owns
    the `.ini` going forward. Changes flow from dotfiles.
 
@@ -219,19 +221,21 @@ with no userbox functions normally — it just lacks CLI tools.
 #### R12.1: Image does not contain user tools
 
 The image does not install `gh`, `chezmoi`, `direnv`, `zoxide`,
-`starship`, `eza`, `bws`, or `antigravity`. No COPR repos, curl
+`starship`, `eza`, `bat`, `bws`, or `antigravity`. No COPR repos, curl
 blocks, or package arrays exist for these tools in the build script.
+Native installer tools (Claude Code, uv) are also not in the image —
+they are installed per-user by `ujust setup-user`.
 
 #### R12.2: Shell aliases degrade gracefully
 
-Every alias and shell hook in `userbox-aliases.sh` is guarded with
+Every alias and shell hook in `tool-aliases.sh` is guarded with
 `command -v`. When a tool is absent (no userbox, or userbox not yet
 assembled), the alias is silently skipped. No `command not found`
 errors on a fresh system.
 
 #### R12.3: Shell hooks for both bash and fish
 
-`userbox-aliases.sh` and `userbox-aliases.fish` include guarded hooks
+`tool-aliases.sh` and `tool-aliases.fish` include guarded hooks
 for direnv, zoxide, and starship in both shells. Both files are
 system-wide (`/etc/profile.d/` and `/etc/fish/conf.d/`), so no
 chezmoi-managed fish config is required for these tools.
@@ -261,16 +265,24 @@ Rationale: breaks the chezmoi↔userbox bootstrap cycle. Chezmoi lives
 inside the userbox, so it cannot seed its own `.ini`. The skel file
 provides a working default; chezmoi overwrites it once available.
 
-#### R12.5: ujust setup-userbox recipe
+#### R12.5: ujust setup-user recipe
 
-`tilefin.just` provides a `setup-userbox` recipe that assembles the
-userbox container from `~/.config/distrobox/userbox.ini`.
+`tilefin.just` provides a `setup-user` recipe that provisions a new
+user's development environment in one step:
+
+1. Installs native CLI tools to `~/.local/bin`: Claude Code (via
+   `claude.ai/install.sh`), uv (via `astral.sh`), and mise (via
+   `mise.run`). All installers are idempotent — re-running updates
+   existing installs.
+2. Assembles the userbox container from
+   `~/.config/distrobox/userbox.ini`.
 
 When an optional image argument is provided, the recipe rewrites the
 `image=` line in the `.ini` before assembly. This supports switching
 images or overriding the skel default without chezmoi.
 
-The recipe has no knowledge of which tools the container provides.
+The recipe is idempotent. Running it again updates native tools and
+reassembles the userbox with `--replace`.
 
 #### R12.6: Systemd user unit for auto-assembly (chezmoi)
 
