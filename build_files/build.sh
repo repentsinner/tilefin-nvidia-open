@@ -205,7 +205,6 @@ echo "Installing VS Code..."
 rpm --import https://packages.microsoft.com/keys/microsoft.asc
 dnf5 config-manager addrepo --from-repofile=https://packages.microsoft.com/yumrepos/vscode/config.repo
 dnf5 install -y code
-dnf5 config-manager setopt code.enabled=0
 
 # niri-desaturate (fork with desaturate window rule support)
 # Replaces the COPR niri package until upstream merges the PR
