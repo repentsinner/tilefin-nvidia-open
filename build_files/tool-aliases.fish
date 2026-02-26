@@ -25,8 +25,11 @@ if status is-interactive; and command -sq starship
 end
 
 # direnv: per-directory environment variables
+# direnv hook outputs hardcoded paths (/usr/bin/direnv) that don't exist on
+# the host when direnv is a distrobox export. Replace with the actual path.
 if status is-interactive; and command -sq direnv
-    direnv hook fish | source
+    set -l _direnv_bin (command -s direnv)
+    direnv hook fish | string replace -a '"/usr/bin/direnv"' "\"$_direnv_bin\"" | source
 end
 
 # mise: per-project runtime version manager (activates when .mise.toml exists)

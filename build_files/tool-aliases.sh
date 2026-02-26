@@ -26,8 +26,12 @@ if [[ $- == *i* ]] && command -v starship &>/dev/null; then
 fi
 
 # direnv: per-directory environment variables
+# direnv hook outputs hardcoded paths (/usr/bin/direnv) that don't exist on
+# the host when direnv is a distrobox export. Replace with the actual path.
 if [[ $- == *i* ]] && command -v direnv &>/dev/null; then
-    eval "$(direnv hook bash)"
+    _direnv_bin="$(command -v direnv)"
+    eval "$(direnv hook bash | sed "s|/usr/bin/direnv|${_direnv_bin}|g")"
+    unset _direnv_bin
 fi
 
 # mise: per-project runtime version manager (activates when .mise.toml exists)
