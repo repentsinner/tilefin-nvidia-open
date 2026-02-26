@@ -4,7 +4,7 @@ set -ouex pipefail
 
 ###############################################################################
 # Tilefin-DX Build Script
-# Niri compositor on Bluefin-DX
+# Niri compositor on Universal Blue base-nvidia
 ###############################################################################
 
 # Customize OS name for GRUB boot menu
@@ -16,27 +16,6 @@ fi
 ###############################################################################
 # Package Arrays
 ###############################################################################
-
-# GNOME components to remove (replaced by Niri)
-GNOME_REMOVE=(
-    gnome-shell
-    mutter
-    gdm
-    gnome-initial-setup
-    gnome-shell-extension-gsconnect
-    gnome-shell-extension-common
-    gnome-shell-extension-window-list
-    nautilus
-    nautilus-gsconnect
-    gnome-session-wayland-session
-    gnome-classic-session
-    gnome-browser-connector
-    gnome-shell-extension-supergfxctl-gex
-    gnome-shell-extension-apps-menu
-    gnome-shell-extension-places-menu
-    gnome-shell-extension-launch-new-instance
-)
-
 
 #------------------------------------------------------------------------------
 # Compositor
@@ -51,7 +30,6 @@ COMPOSITOR=(
 #------------------------------------------------------------------------------
 
 WAYLAND_CORE=(
-    xdg-desktop-portal-gtk
     waybar
     fuzzel
     wlogout
@@ -83,6 +61,7 @@ DESKTOP_APPS=(
     gvfs                      # Virtual filesystem (network, MTP, trash)
     tumbler                   # Thumbnail service
     mpv                       # Media player
+    fish                      # Shell
 )
 
 DESKTOP_UTILITIES=(
@@ -102,12 +81,6 @@ SYSTEM_UTILS=(
     brightnessctl
     greetd
     greetd-tuigreet
-    nvidia-container-toolkit
-    chezmoi                   # Dotfiles manager
-    direnv                    # Per-directory environment variables
-    gh                        # GitHub CLI
-    zoxide                    # Smarter cd
-    starship                  # Modern shell prompt
 )
 
 SYSTEM_THEMING=(
@@ -118,14 +91,6 @@ FONTS=(
     fira-code-fonts
     fontawesome-fonts-all
     google-noto-emoji-fonts
-)
-
-#------------------------------------------------------------------------------
-# Additional Applications
-#------------------------------------------------------------------------------
-
-ADDITIONAL_APPS=(
-    antigravity
 )
 
 #------------------------------------------------------------------------------
@@ -153,16 +118,10 @@ COPR_REPOS=(
     solopasha/hyprland              # hyprlock, hypridle, swww, cliphist (used with Niri too)
     leloubil/wl-clip-persist
     pgaskin/looking-glass-client
-    atim/starship
-)
-
-RPM_REPOS=(
-    "antigravity-rpm::https://us-central1-yum.pkg.dev/projects/antigravity-auto-updater-dev/antigravity-rpm"
 )
 
 FLATPAKS=(
     com.bitwarden.desktop
-    dev.deedles.Trayscale
 )
 
 ###############################################################################
@@ -170,32 +129,8 @@ FLATPAKS=(
 ###############################################################################
 
 systemctl enable podman.socket
-systemctl enable tailscaled.service
 systemctl enable libvirtd.socket          # VM management (socket-activated)
 systemctl enable rpm-ostreed-automatic.timer  # Auto-stage image upgrades
-
-###############################################################################
-# Remove GNOME Components
-###############################################################################
-
-echo "Removing GNOME components..."
-rpm-ostree override remove "${GNOME_REMOVE[@]}"
-
-###############################################################################
-# Remove Homebrew Integration
-# (baked into bluefin-dx, not an RPM - must delete directly)
-###############################################################################
-
-echo "Removing Homebrew integration..."
-rm -f /etc/profile.d/brew.sh /etc/profile.d/brew-bash-completion.sh
-rm -f /usr/lib/systemd/system/brew-setup.service
-rm -f /usr/lib/systemd/system/brew-update.service
-rm -f /usr/lib/systemd/system/brew-upgrade.service
-rm -f /usr/lib/systemd/system/brew-update.timer
-rm -f /usr/lib/systemd/system/brew-upgrade.timer
-rm -f /usr/lib/systemd/system-preset/01-homebrew.preset
-rm -rf /usr/share/ublue-os/homebrew
-rmdir /home/linuxbrew 2>/dev/null || true
 
 ###############################################################################
 # Configure Repositories
@@ -205,20 +140,6 @@ echo "Enabling COPR repositories..."
 for repo in "${COPR_REPOS[@]}"; do
     echo "  Enabling COPR: $repo"
     dnf5 -y copr enable "$repo" || echo "  Warning: Failed to enable $repo (may not support this Fedora version)"
-done
-
-echo "Adding RPM repositories..."
-for repo_entry in "${RPM_REPOS[@]}"; do
-    repo_name="${repo_entry%%::*}"
-    repo_url="${repo_entry##*::}"
-    echo "  Adding repo: $repo_name"
-    tee "/etc/yum.repos.d/${repo_name}.repo" << EOL
-[${repo_name}]
-name=${repo_name}
-baseurl=${repo_url}
-enabled=1
-gpgcheck=0
-EOL
 done
 
 ###############################################################################
@@ -239,8 +160,6 @@ ALL_PACKAGES=(
     "${SYSTEM_UTILS[@]}"
     "${SYSTEM_THEMING[@]}"
     "${FONTS[@]}"
-    # Additional
-    "${ADDITIONAL_APPS[@]}"
     # Virtualization
     "${VIRTUALIZATION[@]}"
 )
@@ -255,11 +174,6 @@ dnf5 install -y --setopt=install_weak_deps=False "${ALL_PACKAGES[@]}"
 echo "Cleaning up repositories..."
 for repo in "${COPR_REPOS[@]}"; do
     dnf5 -y copr disable "$repo" || true
-done
-
-for repo_entry in "${RPM_REPOS[@]}"; do
-    repo_name="${repo_entry%%::*}"
-    rm -f "/etc/yum.repos.d/${repo_name}.repo"
 done
 
 ###############################################################################
@@ -281,9 +195,12 @@ fi
 # Install Additional Tools
 ###############################################################################
 
-# VS Code: update to latest from Microsoft repo (base image may lag behind)
-echo "Updating VS Code..."
-dnf5 update -y --enablerepo=code code
+# VS Code: install from Microsoft repo (not in base image)
+echo "Installing VS Code..."
+rpm --import https://packages.microsoft.com/keys/microsoft.asc
+dnf5 config-manager addrepo --from-repofile=https://packages.microsoft.com/yumrepos/vscode/config.repo
+dnf5 install -y code
+dnf5 config-manager setopt code.enabled=0
 
 # niri-desaturate (fork with desaturate window rule support)
 # Replaces the COPR niri package until upstream merges the PR
@@ -292,20 +209,6 @@ echo "Installing niri-desaturate..."
 curl -Lo /tmp/niri-desaturate.rpm "https://github.com/repentsinner/niri-desaturate/releases/download/v25.11.0.1/niri-25.11.0.1-1.x86_64.rpm"
 dnf5 install -y --allowerasing /tmp/niri-desaturate.rpm
 rm -f /tmp/niri-desaturate.rpm
-
-# Bitwarden Secrets CLI
-echo "Installing Bitwarden Secrets CLI..."
-curl -Lo /tmp/bws.zip "https://github.com/bitwarden/sdk/releases/download/bws-v1.0.0/bws-x86_64-unknown-linux-gnu-1.0.0.zip"
-unzip /tmp/bws.zip -d /tmp
-install -Dm755 /tmp/bws /usr/bin/bws
-rm -rf /tmp/bws.zip /tmp/bws
-
-# eza (modern ls replacement - not in Fedora 42 repos)
-echo "Installing eza..."
-curl -Lo /tmp/eza.tar.gz "https://github.com/eza-community/eza/releases/download/v0.23.4/eza_x86_64-unknown-linux-gnu.tar.gz"
-tar -xzf /tmp/eza.tar.gz -C /tmp
-install -Dm755 /tmp/eza /usr/bin/eza
-rm -rf /tmp/eza.tar.gz /tmp/eza
 
 ###############################################################################
 # Configure Display Manager (greetd)
@@ -344,17 +247,16 @@ ELECTRON_ENABLE_WAYLAND=1
 ELECTRON_OZONE_PLATFORM_HINT=wayland
 EOF
 
-cat > /var/lib/flatpak/overrides/dev.deedles.Trayscale <<EOF
-[Context]
-filesystems=/run/tailscale:rw;
-EOF
-
 ###############################################################################
 # Configure CLI Tools
 ###############################################################################
 
-# Modern CLI aliases (eza, zoxide)
+# CLI aliases and shell hooks (tools resolved at runtime from $PATH)
 cp /ctx/cli-aliases.sh /etc/profile.d/cli-aliases.sh
+
+# Default userbox distrobox declaration (bootstrap for new accounts)
+mkdir -p /etc/skel/.config/distrobox
+cp /ctx/userbox.ini /etc/skel/.config/distrobox/userbox.ini
 
 ###############################################################################
 # Configure Wayland Components
