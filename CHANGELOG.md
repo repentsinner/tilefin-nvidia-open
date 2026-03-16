@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.2](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.4.1...v0.4.2) (2026-02-26)
+
+
+### Bug Fixes
+
+* **build:** add missing gum package to image ([#15](https://github.com/repentsinner/tilefin-nvidia-open/issues/15)) ([a6b7f13](https://github.com/repentsinner/tilefin-nvidia-open/commit/a6b7f13482795cb263498b46ea14ad5c06a8ba7f))
+* **setup-user:** add flathub user remote before flatpak install ([#17](https://github.com/repentsinner/tilefin-nvidia-open/issues/17)) ([b4b2afa](https://github.com/repentsinner/tilefin-nvidia-open/commit/b4b2afabd46b6b59b3ad7ed34cb72226fe39324f))
+* **shell:** rewrite direnv hook paths for distrobox exports ([#18](https://github.com/repentsinner/tilefin-nvidia-open/issues/18)) ([c9d6473](https://github.com/repentsinner/tilefin-nvidia-open/commit/c9d6473c5c3116d8f9648d690c41636f5249a775))
+
 ## [0.4.1](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.4.0...v0.4.1) (2026-02-26)
 
 
