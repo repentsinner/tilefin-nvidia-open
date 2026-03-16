@@ -512,6 +512,69 @@ The Justfile provides `build-iso` (offline) and `build-anaconda-iso`
 (network) recipes. Both delegate to BIB via `_build-bib` with the
 appropriate type and config file.
 
+### S19: AJA Corvid44 kernel module
+
+*Status: not started*
+
+#### Problem
+
+The AJA Corvid44 is a professional SDI video I/O PCIe card used for
+broadcast capture and playout. Its Linux kernel driver (`ajantv2.ko`)
+is not packaged for any distribution — it must be built from source.
+On an immutable bootc/OSTree system, kernel modules cannot be compiled
+at runtime because `/usr/lib/modules` is read-only. The module must be
+baked into the image at build time.
+
+#### Design
+
+The Containerfile adds a multi-stage build that compiles `ajantv2.ko`
+from the [aja-video/libajantv2](https://github.com/aja-video/libajantv2)
+source tree against the kernel headers shipped by the base image. The
+compiled module is copied into the final image layer and registered
+with `depmod`.
+
+This follows the same pattern Universal Blue uses for NVIDIA modules:
+build at image time, ship pre-compiled, rebuild automatically when the
+base image updates (new kernel).
+
+Only the kernel driver is built — the userspace library (`libajantv2`)
+and SDK tools are out of scope for the image. Applications that need
+the userspace SDK can install it in a distrobox.
+
+#### R19.1: Kernel module built at image time
+
+A Containerfile build stage installs `kernel-devel`, `gcc`, and `make`,
+clones the libajantv2 source, and builds `ajantv2.ko` using the
+driver's Makefile with `KVERSION` set to match the base image kernel.
+The `.ko` file is installed to
+`/usr/lib/modules/<kversion>/extra/ajantv2/` in the final image.
+`depmod` runs after installation.
+
+Build dependencies (`kernel-devel`, `gcc`, `make`, `git`) exist only
+in the build stage and do not appear in the final image.
+
+Rationale: the driver Makefile supports cross-compilation via
+`KVERSION` — the module builds for a target kernel without requiring
+that kernel to be running. This is exactly the container build use
+case.
+
+#### R19.2: Module auto-loads at boot
+
+A `modules-load.d` configuration file (`/etc/modules-load.d/ajantv2.conf`)
+causes `ajantv2` to load automatically at boot. The driver creates
+`/dev/ajantv2*` device nodes on load.
+
+#### R19.3: NVIDIA RDMA module (optional, deferred)
+
+The AJA driver tree also builds `ajardma.ko` for NVIDIA GPU Direct
+RDMA (zero-copy DMA between GPU and capture card). This requires
+NVIDIA kernel source headers (`nv-p2p.h`). The base image ships
+NVIDIA open kernel modules but may not ship the headers needed for
+third-party RDMA builds.
+
+This requirement is deferred until GPU Direct is needed. The main
+`ajantv2.ko` driver functions without it.
+
 ## Out of scope
 
 - **User dotfiles**: Managed by chezmoi in a separate repo. This image
