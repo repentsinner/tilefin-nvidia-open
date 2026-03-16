@@ -4,6 +4,15 @@ on:
   pull_request:
     branches:
       - main
+    paths-ignore:
+      - '*.md'
+      - 'LICENSE'
+      - '.github/**'
+      - 'disk_config/**'
+      - 'cosign.*'
+      - 'release-please-config.json'
+      - 'version.txt'
+      - 'artifacthub-repo.yml'
   schedule:
     - cron: '05 10 * * *'  # 10:05am UTC everyday
   push:
@@ -12,7 +21,14 @@ on:
     tags:
       - 'v*'
     paths-ignore:
-      - '**/README.md'
+      - '*.md'
+      - 'LICENSE'
+      - '.github/**'
+      - 'disk_config/**'
+      - 'cosign.*'
+      - 'release-please-config.json'
+      - 'version.txt'
+      - 'artifacthub-repo.yml'
   workflow_dispatch:
 
 env:
