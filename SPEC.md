@@ -709,8 +709,10 @@ base). That project installs `doca-all`, `doca-roce`, `rivermax`, and
   `doca-ofed`?
 - Can the DOCA kernel drivers coexist with ublue's `kmod-nvidia`, or
   do they conflict on `nvidia-peermem`?
-- Resizable BAR: is it enabled in BIOS? Rivermax GPUDirect requires
-  GPU memory in BAR1; limited to 256 MB without resizable BAR.
+- Resizable BAR is **not enabled** in BIOS. BAR1 = 256 MB on the
+  RTX A6000 (48 GB VRAM). Rivermax GPUDirect can only use GPU memory
+  in BAR1 — 256 MB limits throughput to ~128K packets at MTU 1500.
+  Enabling resizable BAR in BIOS exposes the full 48 GB.
 
 Requirements to be specified after resolving DOCA-OFED packaging on
 Fedora bootc.
