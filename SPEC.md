@@ -709,10 +709,13 @@ base). That project installs `doca-all`, `doca-roce`, `rivermax`, and
   `doca-ofed`?
 - Can the DOCA kernel drivers coexist with ublue's `kmod-nvidia`, or
   do they conflict on `nvidia-peermem`?
-- Resizable BAR must be enabled in BIOS for full GPUDirect
-  throughput. Without it, BAR1 is limited to 256 MB regardless of
-  GPU VRAM size, capping Rivermax to ~128K packets at MTU 1500.
-  This is a per-machine BIOS setting, not an image concern.
+- Resizable BAR (per-machine BIOS setting) controls how much GPU
+  memory the NIC can access for GPUDirect. Without it, BAR1 is
+  256 MB regardless of GPU VRAM. This limits the total GPU memory
+  registerable with the NIC at once — constraining the number of
+  concurrent streams, not per-stream throughput. For low-latency
+  broadcast use cases with shallow ring buffers, 256 MB is likely
+  sufficient for a small number of streams.
 
 Requirements to be specified after resolving DOCA-OFED packaging on
 Fedora bootc.
