@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.3](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.4.2...v0.4.3) (2026-03-17)
+
+
+### Features
+
+* **aja:** add AJA Corvid44 kernel module (S19) ([#20](https://github.com/repentsinner/tilefin-nvidia-open/issues/20)) ([7926681](https://github.com/repentsinner/tilefin-nvidia-open/commit/79266810d5719b098c6dd181a4e4ef20f0e7a46b))
+
 ## [0.4.2](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.4.1...v0.4.2) (2026-02-26)
 
 
