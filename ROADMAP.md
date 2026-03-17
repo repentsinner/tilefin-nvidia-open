@@ -18,6 +18,15 @@ Completed work is removed — see CHANGELOG.md for history.
   Depends on **aja-kmod-build-stage**.
   Files: `build_files/ajantv2-modules-load.conf`, `build_files/build.sh`.
 
+- **aja-rdma-build**: Modify the aja-kmod-builder stage to compile
+  with `AJA_RDMA=1`. Detect NVIDIA driver version from installed
+  `kmod-nvidia-open` RPM, fetch `nv-p2p.h` from the matching
+  `NVIDIA/open-gpu-kernel-modules` tag, and pass the include path
+  to the AJA Makefile. Add `nvidia-peermem` to
+  `modules-load.d/ajantv2.conf`.
+  Depends on **aja-kmod-build-stage**, **aja-kmod-autoload** (PR #20).
+  Files: `Containerfile`, `build_files/ajantv2-modules-load.conf`.
+
 ## Dynamic GPU detection (S16)
 
 - **niri-gpu-detect**: Move Nvidia env vars from `niri-config.kdl` to
