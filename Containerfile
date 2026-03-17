@@ -26,7 +26,7 @@ RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     /ctx/build.sh
 
 # Install AJA kernel module into final image
-RUN --mount=type=bind,from=aja-kmod-builder,source=/build/libajantv2/bin,target=/tmp/aja \
+RUN --mount=type=bind,from=aja-kmod-builder,source=/build/libajantv2/driver/bin,target=/tmp/aja \
     KVERSION=$(rpm -q kernel --queryformat '%{VERSION}-%{RELEASE}.%{ARCH}') && \
     install -Dm644 /tmp/aja/ajantv2.ko \
       /usr/lib/modules/${KVERSION}/extra/ajantv2/ajantv2.ko && \
