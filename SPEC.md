@@ -605,34 +605,59 @@ GPUDirect RDMA allows zero-copy packet I/O between the ConnectX NIC and
 GPU memory over Ethernet — the network-side complement to the AJA
 card's PCIe P2P path (S19).
 
-Unlike AJA's RDMA, which uses `nvidia_p2p_*` APIs exported by
-`nvidia.ko`, Rivermax GPUDirect requires the `nvidia-peermem` kernel
-module to bridge NVIDIA GPU memory into the InfiniBand/RDMA verbs
-subsystem. The ublue `kmod-nvidia` build compiles `nvidia-peermem` as a
-non-functional stub (`NV_MLNX_IB_PEER_MEM_SYMBOLS_PRESENT` undefined)
-because the build environment lacks MLNX_OFED headers.
+#### GPU memory registration: two kernel paths
 
-#### Design considerations
+Linux offers two mechanisms for an RDMA NIC to access GPU memory:
 
-Enabling Rivermax on this image requires solving the `nvidia-peermem`
-build problem. Two paths exist:
+| | nvidia-peermem (legacy) | DMA-BUF (standard) |
+|---|---|---|
+| Verbs call | `ibv_reg_mr()` on GPU pointer | `ibv_reg_dmabuf_mr()` on dma-buf fd |
+| Kernel mechanism | Proprietary NVIDIA peer memory API registered into IB verbs | Standard Linux `dma-buf` fd sharing (kernel 5.12+) |
+| NIC driver requirement | MLNX_OFED or DOCA-OFED | Inbox `rdma-core` sufficient |
+| GPU requirement | Any data center GPU | Turing+ with open kernel modules |
+| NVIDIA recommendation | Legacy | **Recommended** |
 
-1. **MLNX_OFED in the kmod build** — rebuild `nvidia-peermem` with
-   MLNX_OFED headers present so the InfiniBand peer memory symbols
-   resolve at compile time. This is the traditional approach.
-2. **Kernel DMA-BUF** — newer kernels and NVIDIA drivers support
-   `dma-buf` based P2P as an alternative to `nvidia-peermem`. This
-   avoids the MLNX_OFED dependency but requires driver and application
-   support.
+NVIDIA recommends DMA-BUF. Performance is identical. This image already
+meets the DMA-BUF prerequisites: kernel 6.19, open NVIDIA driver
+595.45.04, Turing+ GPU, and inbox `rdma-core` with `libibverbs` (which
+includes `ibv_reg_dmabuf_mr`).
 
-Additionally, Rivermax itself requires MLNX_OFED or DOCA userspace
-libraries (`rdma-core`, `libibverbs`, `librdmacm`, `rivermax`,
-`rivermax-utils`). A related project
-([Fuse-Technical-Group/bluefin-gdx-doca](https://github.com/Fuse-Technical-Group/bluefin-gdx-doca))
-has explored this on a CentOS Stream 10 base with the DOCA repository.
+The ublue `kmod-nvidia` build compiles `nvidia-peermem` as a non-
+functional stub (`NV_MLNX_IB_PEER_MEM_SYMBOLS_PRESENT` undefined)
+because the build environment lacks MLNX_OFED headers. This stub
+cannot be loaded (returns `-EINVAL`). AJA RDMA (S19) is unaffected
+because it uses NVIDIA's PCIe P2P API (`nvidia_p2p_*` from
+`nvidia.ko`) directly, bypassing IB verbs entirely.
 
-Requirements to be specified after evaluating the `nvidia-peermem` build
-path and DOCA/MLNX_OFED packaging for Fedora bootc.
+#### Open question: does Rivermax support DMA-BUF?
+
+Rivermax is a closed-source SDK. The verbs-level DMA-BUF plumbing
+exists (`ibv_reg_dmabuf_mr` in rdma-core, kernel DMA-BUF exporter in
+the NVIDIA open driver), and NVIDIA's GPU Operator docs recommend
+DMA-BUF for GPUDirect RDMA. However, no Rivermax release notes or
+documentation confirm that Rivermax has adopted `ibv_reg_dmabuf_mr`
+internally.
+
+**This is the first question to resolve.** If Rivermax supports
+DMA-BUF, the image already has the kernel and driver prerequisites —
+no MLNX_OFED, no DOCA, no nvidia-peermem rebuild. If it does not,
+the fallback paths are:
+
+1. **Rebuild `nvidia-peermem.ko` only** — add a Containerfile build
+   stage (like the AJA stage in S19) that compiles `nvidia-peermem`
+   from the NVIDIA open-gpu-kernel-modules source with MLNX_OFED
+   `ib_peer_mem` headers present. Overlay the resulting `.ko` on top
+   of the stub from `kmod-nvidia`. The rest of the NVIDIA stack stays
+   as-is from ublue.
+2. **Full DOCA stack** — install DOCA (Data Center-on-a-Chip
+   Architecture) packages from NVIDIA's Mellanox repos. This replaces
+   inbox kernel drivers and rdma-core with NVIDIA's out-of-tree
+   versions and adds the Rivermax userspace SDK. A related project
+   ([Fuse-Technical-Group/bluefin-gdx-doca](https://github.com/Fuse-Technical-Group/bluefin-gdx-doca))
+   has explored this approach on CentOS Stream 10.
+
+Requirements to be specified after determining Rivermax's DMA-BUF
+support status.
 
 ## Out of scope
 
