@@ -349,6 +349,10 @@ polkit.addRule(function(action, subject) {
 });
 EOF
 
+# AJA Corvid44 kernel module auto-load
+mkdir -p /etc/modules-load.d
+cp /ctx/ajantv2-modules-load.conf /etc/modules-load.d/ajantv2.conf
+
 # Enable IOMMU for GPU passthrough (harmless on single-GPU systems)
 # This sets kernel args that will be applied on next boot after image switch
 mkdir -p /usr/lib/bootc/kargs.d
