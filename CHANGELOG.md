@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.4](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.4.3...v0.4.4) (2026-03-17)
+
+
+### Features
+
+* **aja:** enable GPU Direct RDMA for AJA Corvid44 ([#25](https://github.com/repentsinner/tilefin-nvidia-open/issues/25)) ([551fd82](https://github.com/repentsinner/tilefin-nvidia-open/commit/551fd82c2b074915b687dfda7a9999f19ef783b1))
+* **aja:** enable GPU Direct RDMA for ajantv2 ([#23](https://github.com/repentsinner/tilefin-nvidia-open/issues/23)) ([50cd1a9](https://github.com/repentsinner/tilefin-nvidia-open/commit/50cd1a9769d788a85357da813a6df93d165dee72))
+
 ## [0.4.3](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.4.2...v0.4.3) (2026-03-17)
 
 
