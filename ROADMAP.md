@@ -18,10 +18,6 @@ Completed work is removed — see CHANGELOG.md for history.
   compile on kernel 6.19+ with Fedora's glibc. Check `rpm -ql` output
   for `nvidia-peermem.ko` and `mlx5_core.ko` to assess coexistence
   with ublue `kmod-nvidia`. This gates all subsequent S20 work.
-- **resizable-bar-bios**: Enable resizable BAR in BIOS. Currently
-  BAR1 = 256 MB on the RTX A6000 (48 GB VRAM). Rivermax GPUDirect
-  requires GPU memory in BAR1. Not a code change — hardware config.
-
 ## Sunshine streaming server (S13)
 
 - **sunshine-research**: Research Sunshine packaging on Fedora, Niri/
