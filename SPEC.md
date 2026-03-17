@@ -585,10 +585,140 @@ The build stage detects the installed NVIDIA driver version from
 the base image's kernel modules and fetches `nv-p2p.h` from the
 corresponding open-gpu-kernel-modules tag.
 
-The `nvidia-peermem` kernel module (shipped by the base image's
-kmod-nvidia package) must be loaded at runtime for RDMA to function.
-The image includes a `modules-load.d` entry for `nvidia-peermem`
-alongside `ajantv2`.
+At runtime the AJA RDMA code calls `nvidia_p2p_get_pages()`,
+`nvidia_p2p_dma_map_pages()`, and related functions exported by
+`nvidia.ko`. These are NVIDIA's PCIe peer-to-peer DMA APIs — they do
+not require `nvidia-peermem`. The `nvidia-peermem` module is an
+InfiniBand/Mellanox peer memory bridge for network RDMA (e.g.,
+Rivermax GPUDirect over Ethernet); the AJA driver's PCIe P2P path
+is independent of it.
+
+### S20: Rivermax ST2110 streaming
+
+*Status: future work*
+
+#### Problem
+
+The machine has a Mellanox ConnectX-6 NIC capable of hardware-
+accelerated SMPTE ST 2110 media transport via NVIDIA Rivermax. Rivermax
+GPUDirect RDMA allows zero-copy packet I/O between the ConnectX NIC and
+GPU memory over Ethernet — the network-side complement to the AJA
+card's PCIe P2P path (S19).
+
+#### Rivermax SDK requirements (v1.81.21)
+
+Rivermax hard-requires DOCA-Host (v2.10.0-0.5.3) on the host. Three
+DOCA profiles are compatible:
+
+| Profile | Scope |
+|---|---|
+| `doca-roce` | Minimal Ethernet/RoCE kernel drivers (replaces `MLNX_EN`) |
+| `doca-ofed` | DOCA-OFED drivers and tools (replaces `MLNX_OFED`) |
+| `doca-all` | Full DOCA-Host libraries |
+
+The Rivermax SDK ships pre-built for RHEL 9.2 and Ubuntu 24.04.
+Fedora is not a supported target. The SDK is a vendored tarball
+containing shared libraries, demo applications (`media_sender`,
+`media_receiver`, `generic_sender`, `generic_receiver`), a dev kit,
+and CMake components. It requires a license file at
+`/opt/mellanox/rivermax/rivermax.lic` (or via
+`RIVERMAX_LICENSE_PATH`).
+
+#### GPUDirect in Rivermax
+
+Rivermax GPUDirect uses CUDA to allocate GPU memory (must reside in
+PCIe BAR1), then passes pointers to the Rivermax API. The NIC
+reads/writes GPU memory directly. The v1.81.21 docs reference "CUDA
+Toolkit Documentation -> GPUDirect RDMA" for setup — which is the
+`nvidia-peermem` + IB verbs path (`ibv_reg_mr()`).
+
+**Rivermax v1.81.21 does not support kernel DMA-BUF
+(`ibv_reg_dmabuf_mr`).** Neither the installation guide nor the user
+manual mentions DMA-BUF. The NVIDIA GPU Operator docs recommend
+DMA-BUF for GPUDirect RDMA generally, but Rivermax has not adopted
+it as of this version.
+
+#### GPU memory registration: background
+
+Linux offers two mechanisms for an RDMA NIC to access GPU memory:
+
+| | nvidia-peermem (legacy) | DMA-BUF (standard) |
+|---|---|---|
+| Verbs call | `ibv_reg_mr()` on GPU pointer | `ibv_reg_dmabuf_mr()` on dma-buf fd |
+| Kernel mechanism | Proprietary NVIDIA peer memory API registered into IB verbs | Standard Linux `dma-buf` fd sharing (kernel 5.12+) |
+| NIC driver requirement | MLNX_OFED or DOCA-OFED | Inbox `rdma-core` sufficient |
+| GPU requirement | Any data center GPU | Turing+ with open kernel modules |
+| NVIDIA recommendation | Legacy | **Recommended** |
+
+DMA-BUF would avoid the DOCA-OFED dependency entirely — the image
+already meets its kernel/driver prerequisites (kernel 6.19, open
+NVIDIA driver 595.45.04, Turing+ GPU, inbox `rdma-core`). But since
+Rivermax does not use it, this path is blocked on NVIDIA updating
+the SDK.
+
+The ublue `kmod-nvidia` build compiles `nvidia-peermem` as a non-
+functional stub (`NV_MLNX_IB_PEER_MEM_SYMBOLS_PRESENT` undefined)
+because the build environment lacks DOCA-OFED headers. This stub
+returns `-EINVAL` on load. AJA RDMA (S19) is unaffected — it uses
+NVIDIA's PCIe P2P API (`nvidia_p2p_*` from `nvidia.ko`) directly,
+bypassing IB verbs.
+
+#### Design
+
+Rivermax userspace runs in a container. The host provides kernel
+drivers and `nvidia-peermem`.
+
+```
+Host (tilefin-nvidia-open):
+  ├─ doca-roce or doca-ofed kernel drivers (replaces inbox mlx5)
+  ├─ nvidia-peermem.ko (rebuilt with DOCA-OFED headers)
+  └─ nvidia.ko, nvidia-uvm.ko (from ublue kmod-nvidia, unchanged)
+
+Container (Rivermax workload):
+  ├─ Rivermax SDK + libs (from vendored tarball)
+  ├─ CUDA toolkit
+  ├─ demo apps (media_sender, media_receiver, etc.)
+  └─ rivermax.lic bind-mounted from host
+```
+
+Host-side changes required:
+
+1. **Replace inbox Mellanox kernel driver with DOCA-OFED.** The inbox
+   `mlx5_core` from Fedora's kernel must be replaced (or overlaid)
+   with DOCA's version. At minimum `doca-roce` profile. DOCA packages
+   are published for RHEL — Fedora compatibility is unverified.
+2. **Rebuild `nvidia-peermem.ko`** with DOCA-OFED headers present so
+   `NV_MLNX_IB_PEER_MEM_SYMBOLS_PRESENT` is defined. This can follow
+   the same Containerfile build-stage pattern as AJA (S19): compile
+   from NVIDIA open-gpu-kernel-modules source, overlay the `.ko` on
+   top of the stub from `kmod-nvidia`.
+3. **`modules-load.d` entry for `nvidia-peermem`** once the module is
+   functional.
+
+A related project
+([Fuse-Technical-Group/bluefin-gdx-doca](https://github.com/Fuse-Technical-Group/bluefin-gdx-doca))
+has explored the full DOCA stack on CentOS Stream 10 (bluefin-gdx:lts
+base). That project installs `doca-all`, `doca-roce`, `rivermax`, and
+`rivermax-utils` directly into the image via the Mellanox yum repo.
+
+#### Open questions
+
+- Can DOCA-OFED kernel packages (built for RHEL) install on Fedora
+  42's kernel, or does Fedora's kernel ABI diverge too far?
+- Is `doca-roce` sufficient, or does Rivermax GPUDirect require
+  `doca-ofed`?
+- Can the DOCA kernel drivers coexist with ublue's `kmod-nvidia`, or
+  do they conflict on `nvidia-peermem`?
+- Resizable BAR (per-machine BIOS setting) controls how much GPU
+  memory the NIC can access for GPUDirect. Without it, BAR1 is
+  256 MB regardless of GPU VRAM. This limits the total GPU memory
+  registerable with the NIC at once — constraining the number of
+  concurrent streams, not per-stream throughput. For low-latency
+  broadcast use cases with shallow ring buffers, 256 MB is likely
+  sufficient for a small number of streams.
+
+Requirements to be specified after resolving DOCA-OFED packaging on
+Fedora bootc.
 
 ## Out of scope
 
