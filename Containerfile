@@ -4,7 +4,10 @@ COPY build_files /
 
 # AJA Corvid44 kernel module build stage
 FROM ghcr.io/ublue-os/base-nvidia:gts AS aja-kmod-builder
-RUN dnf5 install -y kernel-devel gcc make git curl && dnf5 clean all
+RUN dnf5 install -y \
+      kernel-devel-$(rpm -q kernel --queryformat '%{VERSION}-%{RELEASE}.%{ARCH}') \
+      gcc make git curl && \
+    dnf5 clean all
 ARG AJA_VERSION=ntv2_17_6_0_hotfix1
 RUN git clone --depth 1 --branch ${AJA_VERSION} \
       https://github.com/aja-video/libajantv2.git /build/libajantv2
