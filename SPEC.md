@@ -514,7 +514,7 @@ appropriate type and config file.
 
 ### S19: AJA Corvid44 kernel module
 
-*Status: not started*
+*Status: complete*
 
 #### Problem
 
