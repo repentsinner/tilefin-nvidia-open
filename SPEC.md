@@ -564,16 +564,31 @@ A `modules-load.d` configuration file (`/etc/modules-load.d/ajantv2.conf`)
 causes `ajantv2` to load automatically at boot. The driver creates
 `/dev/ajantv2*` device nodes on load.
 
-#### R19.3: NVIDIA RDMA module (optional, deferred)
+#### R19.3: GPU Direct RDMA support
 
-The AJA driver tree also builds `ajardma.ko` for NVIDIA GPU Direct
-RDMA (zero-copy DMA between GPU and capture card). This requires
-NVIDIA kernel source headers (`nv-p2p.h`). The base image ships
-NVIDIA open kernel modules but may not ship the headers needed for
-third-party RDMA builds.
+The `ajantv2.ko` module is compiled with GPU Direct RDMA enabled
+(`AJA_RDMA=1`). This allows zero-copy DMA between the Corvid44 and
+NVIDIA GPU memory, bypassing system RAM.
 
-This requirement is deferred until GPU Direct is needed. The main
-`ajantv2.ko` driver functions without it.
+Use case: SDI capture → GPU tensor processing → SDI output. Without
+RDMA, each direction requires a CPU-mediated copy through system
+memory (two PCIe hops per frame). With RDMA, frames transfer
+directly between the AJA card and GPU (one hop, zero CPU involvement).
+
+RDMA is not a separate kernel module. The AJA Makefile compiles RDMA
+support into `ajantv2.ko` when `AJA_RDMA=1` is set. The build
+requires `nv-p2p.h` from NVIDIA's
+[open-gpu-kernel-modules](https://github.com/NVIDIA/open-gpu-kernel-modules)
+source tree (`kernel-open/nvidia-peermem/nv-p2p.h`).
+
+The build stage detects the installed NVIDIA driver version from
+the base image's kernel modules and fetches `nv-p2p.h` from the
+corresponding open-gpu-kernel-modules tag.
+
+The `nvidia-peermem` kernel module (shipped by the base image's
+kmod-nvidia package) must be loaded at runtime for RDMA to function.
+The image includes a `modules-load.d` entry for `nvidia-peermem`
+alongside `ajantv2`.
 
 ## Out of scope
 
