@@ -605,7 +605,40 @@ GPUDirect RDMA allows zero-copy packet I/O between the ConnectX NIC and
 GPU memory over Ethernet — the network-side complement to the AJA
 card's PCIe P2P path (S19).
 
-#### GPU memory registration: two kernel paths
+#### Rivermax SDK requirements (v1.81.21)
+
+Rivermax hard-requires DOCA-Host (v2.10.0-0.5.3) on the host. Three
+DOCA profiles are compatible:
+
+| Profile | Scope |
+|---|---|
+| `doca-roce` | Minimal Ethernet/RoCE kernel drivers (replaces `MLNX_EN`) |
+| `doca-ofed` | DOCA-OFED drivers and tools (replaces `MLNX_OFED`) |
+| `doca-all` | Full DOCA-Host libraries |
+
+The Rivermax SDK ships pre-built for RHEL 9.2 and Ubuntu 24.04.
+Fedora is not a supported target. The SDK is a vendored tarball
+containing shared libraries, demo applications (`media_sender`,
+`media_receiver`, `generic_sender`, `generic_receiver`), a dev kit,
+and CMake components. It requires a license file at
+`/opt/mellanox/rivermax/rivermax.lic` (or via
+`RIVERMAX_LICENSE_PATH`).
+
+#### GPUDirect in Rivermax
+
+Rivermax GPUDirect uses CUDA to allocate GPU memory (must reside in
+PCIe BAR1), then passes pointers to the Rivermax API. The NIC
+reads/writes GPU memory directly. The v1.81.21 docs reference "CUDA
+Toolkit Documentation -> GPUDirect RDMA" for setup — which is the
+`nvidia-peermem` + IB verbs path (`ibv_reg_mr()`).
+
+**Rivermax v1.81.21 does not support kernel DMA-BUF
+(`ibv_reg_dmabuf_mr`).** Neither the installation guide nor the user
+manual mentions DMA-BUF. The NVIDIA GPU Operator docs recommend
+DMA-BUF for GPUDirect RDMA generally, but Rivermax has not adopted
+it as of this version.
+
+#### GPU memory registration: background
 
 Linux offers two mechanisms for an RDMA NIC to access GPU memory:
 
@@ -617,47 +650,70 @@ Linux offers two mechanisms for an RDMA NIC to access GPU memory:
 | GPU requirement | Any data center GPU | Turing+ with open kernel modules |
 | NVIDIA recommendation | Legacy | **Recommended** |
 
-NVIDIA recommends DMA-BUF. Performance is identical. This image already
-meets the DMA-BUF prerequisites: kernel 6.19, open NVIDIA driver
-595.45.04, Turing+ GPU, and inbox `rdma-core` with `libibverbs` (which
-includes `ibv_reg_dmabuf_mr`).
+DMA-BUF would avoid the DOCA-OFED dependency entirely — the image
+already meets its kernel/driver prerequisites (kernel 6.19, open
+NVIDIA driver 595.45.04, Turing+ GPU, inbox `rdma-core`). But since
+Rivermax does not use it, this path is blocked on NVIDIA updating
+the SDK.
 
 The ublue `kmod-nvidia` build compiles `nvidia-peermem` as a non-
 functional stub (`NV_MLNX_IB_PEER_MEM_SYMBOLS_PRESENT` undefined)
-because the build environment lacks MLNX_OFED headers. This stub
-cannot be loaded (returns `-EINVAL`). AJA RDMA (S19) is unaffected
-because it uses NVIDIA's PCIe P2P API (`nvidia_p2p_*` from
-`nvidia.ko`) directly, bypassing IB verbs entirely.
+because the build environment lacks DOCA-OFED headers. This stub
+returns `-EINVAL` on load. AJA RDMA (S19) is unaffected — it uses
+NVIDIA's PCIe P2P API (`nvidia_p2p_*` from `nvidia.ko`) directly,
+bypassing IB verbs.
 
-#### Open question: does Rivermax support DMA-BUF?
+#### Design
 
-Rivermax is a closed-source SDK. The verbs-level DMA-BUF plumbing
-exists (`ibv_reg_dmabuf_mr` in rdma-core, kernel DMA-BUF exporter in
-the NVIDIA open driver), and NVIDIA's GPU Operator docs recommend
-DMA-BUF for GPUDirect RDMA. However, no Rivermax release notes or
-documentation confirm that Rivermax has adopted `ibv_reg_dmabuf_mr`
-internally.
+Rivermax userspace runs in a container. The host provides kernel
+drivers and `nvidia-peermem`.
 
-**This is the first question to resolve.** If Rivermax supports
-DMA-BUF, the image already has the kernel and driver prerequisites —
-no MLNX_OFED, no DOCA, no nvidia-peermem rebuild. If it does not,
-the fallback paths are:
+```
+Host (tilefin-nvidia-open):
+  ├─ doca-roce or doca-ofed kernel drivers (replaces inbox mlx5)
+  ├─ nvidia-peermem.ko (rebuilt with DOCA-OFED headers)
+  └─ nvidia.ko, nvidia-uvm.ko (from ublue kmod-nvidia, unchanged)
 
-1. **Rebuild `nvidia-peermem.ko` only** — add a Containerfile build
-   stage (like the AJA stage in S19) that compiles `nvidia-peermem`
-   from the NVIDIA open-gpu-kernel-modules source with MLNX_OFED
-   `ib_peer_mem` headers present. Overlay the resulting `.ko` on top
-   of the stub from `kmod-nvidia`. The rest of the NVIDIA stack stays
-   as-is from ublue.
-2. **Full DOCA stack** — install DOCA (Data Center-on-a-Chip
-   Architecture) packages from NVIDIA's Mellanox repos. This replaces
-   inbox kernel drivers and rdma-core with NVIDIA's out-of-tree
-   versions and adds the Rivermax userspace SDK. A related project
-   ([Fuse-Technical-Group/bluefin-gdx-doca](https://github.com/Fuse-Technical-Group/bluefin-gdx-doca))
-   has explored this approach on CentOS Stream 10.
+Container (Rivermax workload):
+  ├─ Rivermax SDK + libs (from vendored tarball)
+  ├─ CUDA toolkit
+  ├─ demo apps (media_sender, media_receiver, etc.)
+  └─ rivermax.lic bind-mounted from host
+```
 
-Requirements to be specified after determining Rivermax's DMA-BUF
-support status.
+Host-side changes required:
+
+1. **Replace inbox Mellanox kernel driver with DOCA-OFED.** The inbox
+   `mlx5_core` from Fedora's kernel must be replaced (or overlaid)
+   with DOCA's version. At minimum `doca-roce` profile. DOCA packages
+   are published for RHEL — Fedora compatibility is unverified.
+2. **Rebuild `nvidia-peermem.ko`** with DOCA-OFED headers present so
+   `NV_MLNX_IB_PEER_MEM_SYMBOLS_PRESENT` is defined. This can follow
+   the same Containerfile build-stage pattern as AJA (S19): compile
+   from NVIDIA open-gpu-kernel-modules source, overlay the `.ko` on
+   top of the stub from `kmod-nvidia`.
+3. **`modules-load.d` entry for `nvidia-peermem`** once the module is
+   functional.
+
+A related project
+([Fuse-Technical-Group/bluefin-gdx-doca](https://github.com/Fuse-Technical-Group/bluefin-gdx-doca))
+has explored the full DOCA stack on CentOS Stream 10 (bluefin-gdx:lts
+base). That project installs `doca-all`, `doca-roce`, `rivermax`, and
+`rivermax-utils` directly into the image via the Mellanox yum repo.
+
+#### Open questions
+
+- Can DOCA-OFED kernel packages (built for RHEL) install on Fedora
+  42's kernel, or does Fedora's kernel ABI diverge too far?
+- Is `doca-roce` sufficient, or does Rivermax GPUDirect require
+  `doca-ofed`?
+- Can the DOCA kernel drivers coexist with ublue's `kmod-nvidia`, or
+  do they conflict on `nvidia-peermem`?
+- Resizable BAR: is it enabled in BIOS? Rivermax GPUDirect requires
+  GPU memory in BAR1; limited to 256 MB without resizable BAR.
+
+Requirements to be specified after resolving DOCA-OFED packaging on
+Fedora bootc.
 
 ## Out of scope
 
