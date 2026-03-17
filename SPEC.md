@@ -585,10 +585,54 @@ The build stage detects the installed NVIDIA driver version from
 the base image's kernel modules and fetches `nv-p2p.h` from the
 corresponding open-gpu-kernel-modules tag.
 
-The `nvidia-peermem` kernel module (shipped by the base image's
-kmod-nvidia package) must be loaded at runtime for RDMA to function.
-The image includes a `modules-load.d` entry for `nvidia-peermem`
-alongside `ajantv2`.
+At runtime the AJA RDMA code calls `nvidia_p2p_get_pages()`,
+`nvidia_p2p_dma_map_pages()`, and related functions exported by
+`nvidia.ko`. These are NVIDIA's PCIe peer-to-peer DMA APIs — they do
+not require `nvidia-peermem`. The `nvidia-peermem` module is an
+InfiniBand/Mellanox peer memory bridge for network RDMA (e.g.,
+Rivermax GPUDirect over Ethernet); the AJA driver's PCIe P2P path
+is independent of it.
+
+### S20: Rivermax ST2110 streaming
+
+*Status: future work*
+
+#### Problem
+
+The machine has a Mellanox ConnectX-6 NIC capable of hardware-
+accelerated SMPTE ST 2110 media transport via NVIDIA Rivermax. Rivermax
+GPUDirect RDMA allows zero-copy packet I/O between the ConnectX NIC and
+GPU memory over Ethernet — the network-side complement to the AJA
+card's PCIe P2P path (S19).
+
+Unlike AJA's RDMA, which uses `nvidia_p2p_*` APIs exported by
+`nvidia.ko`, Rivermax GPUDirect requires the `nvidia-peermem` kernel
+module to bridge NVIDIA GPU memory into the InfiniBand/RDMA verbs
+subsystem. The ublue `kmod-nvidia` build compiles `nvidia-peermem` as a
+non-functional stub (`NV_MLNX_IB_PEER_MEM_SYMBOLS_PRESENT` undefined)
+because the build environment lacks MLNX_OFED headers.
+
+#### Design considerations
+
+Enabling Rivermax on this image requires solving the `nvidia-peermem`
+build problem. Two paths exist:
+
+1. **MLNX_OFED in the kmod build** — rebuild `nvidia-peermem` with
+   MLNX_OFED headers present so the InfiniBand peer memory symbols
+   resolve at compile time. This is the traditional approach.
+2. **Kernel DMA-BUF** — newer kernels and NVIDIA drivers support
+   `dma-buf` based P2P as an alternative to `nvidia-peermem`. This
+   avoids the MLNX_OFED dependency but requires driver and application
+   support.
+
+Additionally, Rivermax itself requires MLNX_OFED or DOCA userspace
+libraries (`rdma-core`, `libibverbs`, `librdmacm`, `rivermax`,
+`rivermax-utils`). A related project
+([Fuse-Technical-Group/bluefin-gdx-doca](https://github.com/Fuse-Technical-Group/bluefin-gdx-doca))
+has explored this on a CentOS Stream 10 base with the DOCA repository.
+
+Requirements to be specified after evaluating the `nvidia-peermem` build
+path and DOCA/MLNX_OFED packaging for Fedora bootc.
 
 ## Out of scope
 
