@@ -371,6 +371,13 @@ cat > /usr/lib/bootc/kargs.d/20-verbose-boot.toml <<'EOF'
 kargs = ["systemd.show_status=1"]
 EOF
 
+# Enable NVIDIA DRM kernel modesetting (required for proper display
+# power management — without this, display DPMS cycling corrupts GPU
+# contexts and crashes Electron apps on resume)
+cat > /usr/lib/bootc/kargs.d/30-nvidia-drm.toml <<'EOF'
+kargs = ["nvidia-drm.modeset=1"]
+EOF
+
 ###############################################################################
 # Install Custom Justfile (ujust recipes)
 ###############################################################################

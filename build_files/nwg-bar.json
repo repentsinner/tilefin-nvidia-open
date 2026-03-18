@@ -5,6 +5,11 @@
     "icon": "/usr/share/nwg-bar/images/system-lock-screen.svg"
   },
   {
+    "label": "Sleep",
+    "exec": "systemctl suspend",
+    "icon": "/usr/share/nwg-bar/images/system-suspend.svg"
+  },
+  {
     "label": "Logout",
     "exec": "compositor-exit",
     "icon": "/usr/share/nwg-bar/images/system-log-out.svg"
