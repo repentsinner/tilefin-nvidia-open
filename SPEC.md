@@ -720,6 +720,64 @@ base). That project installs `doca-all`, `doca-roce`, `rivermax`, and
 Requirements to be specified after resolving DOCA-OFED packaging on
 Fedora bootc.
 
+### S21: NVIDIA DRM modesetting
+
+*Status: in progress*
+
+#### Problem
+
+The rebase from Bluefin-DX to base-nvidia (S15) dropped
+`nvidia-drm.modeset=1` from kernel args. Bluefin-DX passed it on the
+command line; base-nvidia does not. Without DRM modesetting, NVIDIA
+cannot properly manage display power states. Display DPMS power cycling
+(especially DSC link retraining on 5K displays) corrupts GPU contexts,
+causing:
+
+- Electron apps (VS Code, Bitwarden) crash with SIGILL after display
+  wakes from sleep.
+- Hyprlock renders a flat magenta/red field instead of a blurred
+  screenshot after extended display sleep.
+
+#### Design
+
+A `bootc kargs.d` file (`30-nvidia-drm.toml`) adds
+`nvidia-drm.modeset=1` to kernel arguments, following the same pattern
+as `10-iommu.toml` and `20-verbose-boot.toml`.
+
+The base image already ships `NVreg_PreserveVideoMemoryAllocations=1`
+in `/usr/lib/modprobe.d/nvidia.conf` — no additional modprobe
+configuration is needed.
+
+#### R21.1: DRM modesetting kernel arg
+
+`/usr/lib/bootc/kargs.d/30-nvidia-drm.toml` sets
+`nvidia-drm.modeset=1`. The arg appears in `/proc/cmdline` after reboot.
+
+### S22: Manual system suspend
+
+*Status: in progress*
+
+#### Problem
+
+The nwg-bar power menu provides Lock, Logout, Reboot, and Shutdown but
+no suspend option. Users must run `systemctl suspend` manually.
+
+Auto-suspend via hypridle remains intentionally disabled — an
+unattended suspend during long-running builds or VM workloads is
+destructive. Manual suspend via the power menu gives the user explicit
+control.
+
+#### Design
+
+nwg-bar gains a Sleep button between Lock and Logout. The button runs
+`systemctl suspend`. The icon (`system-suspend.svg`) ships with the
+nwg-bar package.
+
+#### R22.1: Sleep button in nwg-bar
+
+The nwg-bar config (`bar.json`) includes a Sleep entry that runs
+`systemctl suspend`, positioned between Lock and Logout.
+
 ## Out of scope
 
 - **User dotfiles**: Managed by chezmoi in a separate repo. This image
