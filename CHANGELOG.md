@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.5](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.4.4...v0.4.5) (2026-03-18)
+
+
+### Features
+
+* NVIDIA DRM modesetting + suspend button ([#27](https://github.com/repentsinner/tilefin-nvidia-open/issues/27)) ([d61f45e](https://github.com/repentsinner/tilefin-nvidia-open/commit/d61f45ea2b214c5417db64054d1c313e983a4e20))
+
 ## [0.4.4](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.4.3...v0.4.4) (2026-03-17)
 
 
