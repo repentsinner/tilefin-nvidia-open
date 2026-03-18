@@ -18,11 +18,27 @@ Completed work is removed — see CHANGELOG.md for history.
   compile on kernel 6.19+ with Fedora's glibc. Check `rpm -ql` output
   for `nvidia-peermem.ko` and `mlx5_core.ko` to assess coexistence
   with ublue `kmod-nvidia`. This gates all subsequent S20 work.
+
 ## Manual system suspend (S22)
 
 - **manual-suspend**: Add Sleep button to nwg-bar power menu. Runs
   `systemctl suspend`. Icon: `system-suspend.svg` (ships with nwg-bar).
   Files: `build_files/nwg-bar.json`.
+
+## Dual-channel image publishing (S23)
+
+- **build-channel-tags**: Add a workflow step that reads `version.txt`
+  into a step output. Update `docker/metadata-action` tags: replace
+  `latest.YYYYMMDD` and bare `YYYYMMDD` with
+  `latest.v<version>.<YYYYMMDD>`. Add `stable` and `<version>` tags
+  for `v*` tag builds. Remove `<major>.<minor>` tag. Set
+  `org.opencontainers.image.version` label to semver.
+  Files: `.github/workflows/build.yml`.
+
+- **build-push-gate**: Widen the push-to-GHCR and cosign-signing `if`
+  conditions to allow `refs/tags/v*` in addition to the default
+  branch. Depends on **build-channel-tags**.
+  Files: `.github/workflows/build.yml`.
 
 ## Sunshine streaming server (S13)
 

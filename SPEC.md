@@ -455,8 +455,96 @@ Three workflows support the release lifecycle:
 Daily and push builds continue producing `latest` and date-stamped
 tags. Semver tags are additive — they appear only when a release is cut.
 
-Version history: 0.1.0 (Sway on Bluefin-DX), 0.2.0 (Hyprland on Bluefin-DX), 0.3.0 (Niri on
-Bluefin-DX), 0.4.0 (Niri on base-nvidia).
+Version history: 0.1.0 (Sway on Bluefin-DX), 0.2.0 (Hyprland on
+Bluefin-DX), 0.3.0 (Niri on Bluefin-DX), 0.4.0 (Niri on base-nvidia).
+
+### S23: Dual-channel image publishing
+
+*Status: not started*
+
+#### Problem
+
+The build workflow produces `latest` and `latest.YYYYMMDD` tags on
+every push to main and daily cron. Semver tags (`0.4.4`) are generated
+for release-please tag pushes but never published — the push gate
+requires `refs/heads/main` and rejects `refs/tags/v*`.
+
+This creates two issues:
+
+1. There is no distinction between "upstream base image rebuilt" and
+   "we shipped a change." A user on `latest` receives both — there is
+   no way to opt into only intentional releases.
+2. Daily tags (`latest.20260318`) carry no indication of which release
+   they derive from. A user cannot tell whether `latest.20260318`
+   contains the changes from `0.4.4` or `0.4.3`.
+
+#### Design
+
+Two update channels serve different stability preferences:
+
+| Channel | Tag | Builds on | Contains |
+|---|---|---|---|
+| `latest` | `latest`, `latest.v0.4.4.20260318` | Daily cron, push to main | Latest main + whatever upstream shipped that day |
+| `stable` | `stable`, `0.4.4` | release-please tag push (`v*`) | Exactly the code at the release tag, built against current upstream |
+
+`bootc upgrade` pulls the newest image for whichever tag the machine
+tracks. `latest` advances daily. `stable` advances only when
+release-please creates a new tag.
+
+##### Tag format
+
+Daily and push-to-main builds embed the current semver from
+`version.txt` in the datestamp tag:
+
+- `latest` — rolling, overwritten each build
+- `latest.v0.4.4.20260318` — pinned daily snapshot with semver provenance
+
+Tag-triggered builds (release-please `v*` tags) produce:
+
+- `stable` — rolling release channel, overwritten each release
+- `0.4.4` — pinned semver snapshot (rollback target)
+
+The `v` prefix appears in git tags (`v0.4.4`) but not in image tags
+(`0.4.4`, `stable`). The daily datestamp tag retains `v` as a
+separator: `latest.v0.4.4.20260318`.
+
+##### Push gate
+
+The push-to-GHCR and cosign-signing steps gate on:
+
+```
+github.event_name != 'pull_request' && (
+  github.ref == format('refs/heads/{0}', github.event.repository.default_branch) ||
+  startsWith(github.ref, 'refs/tags/v')
+)
+```
+
+This allows both main-branch builds and tag-triggered builds to
+publish images.
+
+##### OCI version label
+
+The `org.opencontainers.image.version` label uses the semver from
+`version.txt` for all builds (e.g., `0.4.4`), replacing the current
+`latest.YYYYMMDD` value. This makes the version visible in `bootc
+status` and container inspect output regardless of channel.
+
+#### R23.1: Daily tags include semver provenance
+
+Daily and push-to-main builds read `version.txt` and produce tags
+`latest` and `latest.v<version>.<YYYYMMDD>`. The bare `YYYYMMDD` and
+`latest.YYYYMMDD` tags are removed.
+
+#### R23.2: Tag builds publish to stable channel
+
+Builds triggered by `v*` tags produce tags `stable` and `<version>`.
+The push gate permits `refs/tags/v*` in addition to the default
+branch.
+
+#### R23.3: OCI version label uses semver
+
+The `org.opencontainers.image.version` label is set to the value of
+`version.txt` for all builds.
 
 ### S18: Install media
 
