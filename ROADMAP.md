@@ -18,6 +18,12 @@ Completed work is removed — see CHANGELOG.md for history.
   compile on kernel 6.19+ with Fedora's glibc. Check `rpm -ql` output
   for `nvidia-peermem.ko` and `mlx5_core.ko` to assess coexistence
   with ublue `kmod-nvidia`. This gates all subsequent S20 work.
+## Manual system suspend (S22)
+
+- **manual-suspend**: Add Sleep button to nwg-bar power menu. Runs
+  `systemctl suspend`. Icon: `system-suspend.svg` (ships with nwg-bar).
+  Files: `build_files/nwg-bar.json`.
+
 ## Sunshine streaming server (S13)
 
 - **sunshine-research**: Research Sunshine packaging on Fedora, Niri/
