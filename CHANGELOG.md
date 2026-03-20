@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.6](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.4.5...v0.4.6) (2026-03-20)
+
+
+### Bug Fixes
+
+* **aja:** use forked libajantv2 with 32-bit DMA mask fix ([#31](https://github.com/repentsinner/tilefin-nvidia-open/issues/31)) ([7dc0081](https://github.com/repentsinner/tilefin-nvidia-open/commit/7dc00814002146403e3dae181997da4c1813f291))
+
 ## [0.4.5](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.4.4...v0.4.5) (2026-03-18)
 
 
