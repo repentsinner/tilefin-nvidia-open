@@ -8,9 +8,9 @@ RUN dnf5 install -y \
       kernel-devel-$(rpm -q kernel --queryformat '%{VERSION}-%{RELEASE}.%{ARCH}') \
       gcc make git curl && \
     dnf5 clean all
-ARG AJA_VERSION=ntv2_17_6_0_hotfix1
+ARG AJA_VERSION=fix/c2h-dma-mask-32bit
 RUN git clone --depth 1 --branch ${AJA_VERSION} \
-      https://github.com/aja-video/libajantv2.git /build/libajantv2
+      https://github.com/repentsinner/libajantv2.git /build/libajantv2
 # Fetch NVIDIA nv-p2p.h header for GPU Direct RDMA support.
 # The base image ships precompiled kmod-nvidia but not source headers.
 # Detect the installed driver version and fetch the matching header from
