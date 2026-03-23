@@ -359,7 +359,7 @@ mkdir -p /usr/lib/bootc/kargs.d
 cat > /usr/lib/bootc/kargs.d/10-iommu.toml <<'EOF'
 # Enable IOMMU for VFIO GPU passthrough
 # These are safe on systems without passthrough - just enables the capability
-kargs = ["intel_iommu=on", "amd_iommu=on", "iommu=pt"]
+kargs = ["intel_iommu=on", "amd_iommu=on"]
 EOF
 
 # Enable verbose boot (show kernel and systemd messages instead of splash)
