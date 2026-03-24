@@ -353,6 +353,31 @@ EOF
 mkdir -p /etc/modules-load.d
 cp /ctx/ajantv2-modules-load.conf /etc/modules-load.d/ajantv2.conf
 
+# Raise memlock limit for GPU/RDMA workloads (nvidia_p2p_get_pages,
+# ibv_reg_mr). Applies to all users in wheel group.
+# PAM path — covers interactive login sessions (greetd → niri → terminal)
+mkdir -p /etc/security/limits.d
+cat > /etc/security/limits.d/99-memlock.conf <<'EOF'
+# Unlimited memlock for wheel group — required for GPU pinned memory
+# and RDMA verb registration (AJA GPUDirect, future Rivermax)
+@wheel  -  memlock  unlimited
+EOF
+
+# systemd path — covers user services (e.g. userbox.service)
+mkdir -p /etc/systemd/user.conf.d
+cat > /etc/systemd/user.conf.d/memlock.conf <<'EOF'
+[Manager]
+DefaultLimitMEMLOCK=infinity
+EOF
+
+# Enable Resizable BAR — lets the NVIDIA driver map full VRAM over PCIe
+# instead of a 256 MiB sliding window. Required for efficient GPUDirect RDMA.
+# UEFI must also have "Above 4G Decoding" and "Resizable BAR" enabled.
+mkdir -p /etc/modprobe.d
+cat > /etc/modprobe.d/nvidia-rebar.conf <<'EOF'
+options nvidia NVreg_EnableResizableBar=1
+EOF
+
 # Enable IOMMU for GPU passthrough (harmless on single-GPU systems)
 # This sets kernel args that will be applied on next boot after image switch
 mkdir -p /usr/lib/bootc/kargs.d
