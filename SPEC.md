@@ -47,6 +47,21 @@ elsewhere:
 | **Flatpak** | Sandboxed GUI apps |
 | **Native installer** (`~/.local/bin`) | Self-updating vendor CLIs (e.g., Claude Code) |
 
+### Kernel modules and userspace libraries
+
+Out-of-tree kernel modules (e.g., `ajantv2.ko`) are baked into the
+image — they are kernel extensions that cannot be compiled or loaded
+on an immutable rootfs at runtime. The image provides the `.ko` file,
+`depmod` registration, and `modules-load.d` auto-load config.
+
+The corresponding userspace libraries and headers are **not** in the
+image. Applications that talk to these devices statically link the
+vendor SDK at build time. The resulting binary communicates with the
+kernel module via device nodes (e.g., `/dev/ajantv2*`) — no shared
+library on the host at runtime. Vendor SDKs are build dependencies
+that belong in a distrobox or build container, not in the immutable
+system image.
+
 ## Sections
 
 ### S1: GNOME removal
@@ -151,6 +166,32 @@ GPU passthrough support:
 - virtiofsd (fast file sharing).
 - Polkit rule: wheel group can manage VMs without extra groups.
 - IOMMU kernel args enabled via `bootc kargs.d`.
+
+#### IOMMU configuration
+
+The image enables `intel_iommu=on` and `amd_iommu=on` for VFIO group
+isolation. `iommu=pt` (passthrough mode) is intentionally omitted.
+
+`iommu=pt` sets a global default: all devices get an IOMMU identity
+domain (VA == PA, no translation). VFIO-bound devices override this
+with their own isolated domain regardless, so passthrough mode offers
+only a minor performance benefit for non-VFIO devices.
+
+The cost is significant for devices with restricted DMA masks. The
+Corvid 44 12G's 32-bit XDMA engine (S19) cannot reach physical memory
+above 4 GB. Without `iommu=pt`, the kernel's direct DMA path
+(`dma_direct_map_page`) detects the 32-bit mask and bounce-buffers
+through SWIOTLB. With `iommu=pt`, the IOMMU DMA path
+(`iommu_dma_map_page`) handles mapping instead — and on kernel 6.19,
+this path silently fails rather than falling back to SWIOTLB. The
+mapping returns `DMA_MAPPING_ERROR` with no diagnostic in dmesg. The
+AJA driver translates this to `EPERM` on the DMA ioctl.
+
+This is a gap in the kernel's `iommu-dma` layer: `dma_direct_map_page`
+checks `dma_capable()` and falls back to `swiotlb_map()` with a
+`report_addr()` warning on failure. The identity-domain path in
+`iommu_dma_map_page` has no equivalent fallback or diagnostic.
+Reported behavior is on kernel 6.19.8 (Fedora 42).
 
 ### S10: Wayland environment config
 
@@ -616,18 +657,23 @@ baked into the image at build time.
 #### Design
 
 The Containerfile adds a multi-stage build that compiles `ajantv2.ko`
-from the [aja-video/libajantv2](https://github.com/aja-video/libajantv2)
-source tree against the kernel headers shipped by the base image. The
-compiled module is copied into the final image layer and registered
-with `depmod`.
+from a [forked libajantv2](https://github.com/repentsinner/libajantv2)
+(branch `fix/c2h-dma-mask-32bit`) against the kernel headers shipped
+by the base image. The compiled module is copied into the final image
+layer and registered with `depmod`.
+
+The fork fixes a bug where `dma_registers_init()` unconditionally sets
+a 64-bit DMA mask, breaking C2H DMA on the Corvid 44 12G's 32-bit
+Xilinx XDMA engine. See R19.3 for details.
 
 This follows the same pattern Universal Blue uses for NVIDIA modules:
 build at image time, ship pre-compiled, rebuild automatically when the
 base image updates (new kernel).
 
-Only the kernel driver is built — the userspace library (`libajantv2`)
-and SDK tools are out of scope for the image. Applications that need
-the userspace SDK can install it in a distrobox.
+Only the kernel driver is built. The userspace SDK (`libajantv2`,
+headers, tools) is not in the image — per the image boundary's kernel
+module rule, applications statically link the SDK and communicate
+with the driver via `/dev/ajantv2*` device nodes.
 
 #### R19.1: Kernel module built at image time
 
@@ -654,32 +700,58 @@ causes `ajantv2` to load automatically at boot. The driver creates
 
 #### R19.3: GPU Direct RDMA support
 
+*Status: not viable on Corvid 44 12G on x86 — 32-bit DMA hardware
+cannot reach GPU BAR addresses*
+
 The `ajantv2.ko` module is compiled with GPU Direct RDMA enabled
-(`AJA_RDMA=1`). This allows zero-copy DMA between the Corvid44 and
-NVIDIA GPU memory, bypassing system RAM.
-
-Use case: SDI capture → GPU tensor processing → SDI output. Without
-RDMA, each direction requires a CPU-mediated copy through system
-memory (two PCIe hops per frame). With RDMA, frames transfer
-directly between the AJA card and GPU (one hop, zero CPU involvement).
-
-RDMA is not a separate kernel module. The AJA Makefile compiles RDMA
-support into `ajantv2.ko` when `AJA_RDMA=1` is set. The build
-requires `nv-p2p.h` from NVIDIA's
+(`AJA_RDMA=1`). The build requires `nv-p2p.h` from NVIDIA's
 [open-gpu-kernel-modules](https://github.com/NVIDIA/open-gpu-kernel-modules)
-source tree (`kernel-open/nvidia-peermem/nv-p2p.h`).
+source tree (`kernel-open/nvidia-peermem/nv-p2p.h`). The build stage
+detects the installed NVIDIA driver version and fetches the matching
+header.
 
-The build stage detects the installed NVIDIA driver version from
-the base image's kernel modules and fetches `nv-p2p.h` from the
-corresponding open-gpu-kernel-modules tag.
+##### DMA to system RAM works (with the mask fix)
 
-At runtime the AJA RDMA code calls `nvidia_p2p_get_pages()`,
-`nvidia_p2p_dma_map_pages()`, and related functions exported by
-`nvidia.ko`. These are NVIDIA's PCIe peer-to-peer DMA APIs — they do
-not require `nvidia-peermem`. The `nvidia-peermem` module is an
-InfiniBand/Mellanox peer memory bridge for network RDMA (e.g.,
-Rivermax GPUDirect over Ethernet); the AJA driver's PCIe P2P path
-is independent of it.
+The Corvid 44 12G uses a Xilinx XDMA engine with 32-bit addressing.
+A 32-bit DMA mask is standard — the kernel's DMA allocator, SWIOTLB,
+and `GFP_DMA32` all ensure buffers land below 4 GB. Normal C2H/H2C
+DMA (card ↔ system RAM) works correctly when the mask is set properly
+and `iommu=pt` is not active (see S9, IOMMU configuration).
+
+The upstream AJA driver breaks this by unconditionally upgrading to a
+64-bit DMA mask in `dma_registers_init()`, telling the kernel the
+device can reach any address. The kernel then allocates buffers above
+4 GB, producing XDMA descriptor errors and transfer timeouts. The
+fork (`repentsinner/libajantv2`, branch `fix/c2h-dma-mask-32bit`)
+corrects this by gating the 64-bit upgrade on `IORESOURCE_MEM_64` in
+BAR 0.
+
+##### Why RDMA cannot work on x86
+
+GPU Direct RDMA requires the XDMA engine to issue PCIe transactions
+directly to GPU BAR memory. On x86 systems, GPU BAR is mapped by the
+BIOS above 4 GB regardless of BAR size or ReBAR settings. The 32-bit
+XDMA engine cannot reach those addresses. Unlike system RAM, GPU BAR
+regions are fixed MMIO mappings — the kernel cannot relocate them into
+the low 4 GB zone.
+
+NVIDIA's Holoscan team verified AJA RDMA on Clara AGX and IGX Orin
+(ARM platforms) where the physical address map is more constrained and
+GPU BAR can land below 4 GB. No x86 verification exists.
+
+Workarounds evaluated and rejected:
+
+| Approach | Why it fails |
+|---|---|
+| Disable ReBAR / shrink BAR1 | BAR position in address space stays above 4 GB |
+| IOMMU remapping | NVIDIA requires IOMMU passthrough for GPUDirect RDMA |
+| SWIOTLB bounce buffer | Handles system memory only, not MMIO/BAR regions |
+
+##### Current path: CPU-mediated double-hop
+
+The SDI capture → GPU pipeline uses two PCIe traversals per frame:
+C2H DMA to system RAM (below 4 GB), then `cudaMemcpy` to GPU. This
+is the standard path on x86 for any AJA card with 32-bit DMA.
 
 ### S20: Rivermax ST2110 streaming
 
