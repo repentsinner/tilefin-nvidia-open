@@ -17,7 +17,7 @@ Completed work is removed — see CHANGELOG.md for history.
   `desktopvideo` RPM. Installs RPM if not present, copies kernel
   module source to writable location, builds against running kernel
   headers (`KERNELDIR=/usr/src/kernels/$(uname -r)`), installs `.ko`
-  files to `~/.local/lib/blackmagic-io/`, creates and enables a
+  files to `/var/lib/blackmagic-io/`, creates and enables a
   systemd user service to `insmod` at boot. Idempotent — safe to
   re-run after kernel updates. Depends on **remove-aja-containerfile**.
   Files: `build_files/tilefin.just`.

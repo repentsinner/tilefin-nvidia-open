@@ -640,7 +640,7 @@ install workflow:
 2. `ujust setup-decklink <path-to-rpm>` installs the RPM (if needed),
    copies the kernel module source to a writable location, builds
    against the running kernel's headers, installs the `.ko` files
-   to `~/.local/lib/blackmagic-io/`, and enables a systemd service
+   to `/var/lib/blackmagic-io/`, and enables a systemd service
    to load them at boot.
 3. After kernel updates, the user re-runs the recipe to rebuild.
 
