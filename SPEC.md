@@ -600,86 +600,52 @@ The Justfile provides `build-iso` (offline) and `build-anaconda-iso`
 (network) recipes. Both delegate to BIB via `_build-bib` with the
 appropriate type and config file.
 
-### S19: AJA Corvid44 kernel module
+### S19: Video capture kernel module
 
-*Status: complete*
+*Status: in progress*
 
 #### Problem
 
-The AJA Corvid44 is a professional SDI video I/O PCIe card used for
-broadcast capture and playout. Its Linux kernel driver (`ajantv2.ko`)
-is not packaged for any distribution — it must be built from source.
-On an immutable bootc/OSTree system, kernel modules cannot be compiled
-at runtime because `/usr/lib/modules` is read-only. The module must be
-baked into the image at build time.
+The system requires a professional SDI video I/O PCIe card for
+broadcast capture and playout. The kernel driver for the capture card
+must load at boot on an immutable bootc/OSTree system where
+`/usr/lib/modules` is read-only.
 
-#### Design
+#### History: AJA Corvid44
 
-The Containerfile adds a multi-stage build that compiles `ajantv2.ko`
-from the [aja-video/libajantv2](https://github.com/aja-video/libajantv2)
-source tree against the kernel headers shipped by the base image. The
-compiled module is copied into the final image layer and registered
-with `depmod`.
+The original capture card was an AJA Corvid44 12G with its open-source
+`ajantv2.ko` driver built at image time (multi-stage Containerfile
+build with GPU Direct RDMA via `AJA_RDMA=1`). The Corvid44's Xilinx
+XDMA engine has a 32-bit DMA mask, which required removing `iommu=pt`
+from kernel args so the kernel's direct DMA path could bounce-buffer
+through SWIOTLB for addresses above 4 GB. The upstream driver
+incorrectly set a 64-bit mask; a fork was maintained to fix this.
 
-This follows the same pattern Universal Blue uses for NVIDIA modules:
-build at image time, ship pre-compiled, rebuild automatically when the
-base image updates (new kernel).
+The AJA card was removed from the system. The 32-bit DMA constraint,
+the forked driver, and the IOMMU workaround are no longer needed.
 
-Only the kernel driver is built — the userspace library (`libajantv2`)
-and SDK tools are out of scope for the image. Applications that need
-the userspace SDK can install it in a distrobox.
+#### Current: Blackmagic DeckLink 8K Pro G2
 
-#### R19.1: Kernel module built at image time
+The replacement capture card is a Blackmagic DeckLink 8K Pro G2
+(quad-SDI, 64-bit DMA). Its kernel driver (`blackmagic-io.ko`,
+`snd_blackmagic-io.ko`) ships as source in the proprietary
+`desktopvideo` RPM from Blackmagic Design. The RPM requires accepting
+a EULA and cannot be redistributed.
 
-A Containerfile build stage installs `kernel-devel`, `gcc`, and `make`,
-clones the libajantv2 source, and builds `ajantv2.ko` using the
-driver's Makefile with `KVERSION` set to match the base image kernel.
-The `.ko` file is installed to
-`/usr/lib/modules/<kversion>/extra/ajantv2/` in the final image.
-`depmod` runs after installation.
+Because the driver is proprietary, it cannot be baked into the public
+image. Instead, a `ujust` recipe automates the out-of-band build and
+install workflow:
 
-Build dependencies (`kernel-devel`, `gcc`, `make`, `git`) exist only
-in the build stage and do not appear in the final image.
+1. User downloads the `desktopvideo` RPM after accepting the EULA.
+2. `ujust setup-decklink <path-to-rpm>` installs the RPM (if needed),
+   copies the kernel module source to a writable location, builds
+   against the running kernel's headers, installs the `.ko` files
+   to `/var/lib/blackmagic-io/`, and enables a systemd service
+   to load them at boot.
+3. After kernel updates, the user re-runs the recipe to rebuild.
 
-Rationale: the driver Makefile supports cross-compilation via
-`KVERSION` — the module builds for a target kernel without requiring
-that kernel to be running. This is exactly the container build use
-case.
-
-#### R19.2: Module auto-loads at boot
-
-A `modules-load.d` configuration file (`/etc/modules-load.d/ajantv2.conf`)
-causes `ajantv2` to load automatically at boot. The driver creates
-`/dev/ajantv2*` device nodes on load.
-
-#### R19.3: GPU Direct RDMA support
-
-The `ajantv2.ko` module is compiled with GPU Direct RDMA enabled
-(`AJA_RDMA=1`). This allows zero-copy DMA between the Corvid44 and
-NVIDIA GPU memory, bypassing system RAM.
-
-Use case: SDI capture → GPU tensor processing → SDI output. Without
-RDMA, each direction requires a CPU-mediated copy through system
-memory (two PCIe hops per frame). With RDMA, frames transfer
-directly between the AJA card and GPU (one hop, zero CPU involvement).
-
-RDMA is not a separate kernel module. The AJA Makefile compiles RDMA
-support into `ajantv2.ko` when `AJA_RDMA=1` is set. The build
-requires `nv-p2p.h` from NVIDIA's
-[open-gpu-kernel-modules](https://github.com/NVIDIA/open-gpu-kernel-modules)
-source tree (`kernel-open/nvidia-peermem/nv-p2p.h`).
-
-The build stage detects the installed NVIDIA driver version from
-the base image's kernel modules and fetches `nv-p2p.h` from the
-corresponding open-gpu-kernel-modules tag.
-
-At runtime the AJA RDMA code calls `nvidia_p2p_get_pages()`,
-`nvidia_p2p_dma_map_pages()`, and related functions exported by
-`nvidia.ko`. These are NVIDIA's PCIe peer-to-peer DMA APIs — they do
-not require `nvidia-peermem`. The `nvidia-peermem` module is an
-InfiniBand/Mellanox peer memory bridge for network RDMA (e.g.,
-Rivermax GPUDirect over Ethernet); the AJA driver's PCIe P2P path
-is independent of it.
+The DeckLink's 64-bit DMA mask imposes no IOMMU constraints.
+`iommu=pt` is safe with this card.
 
 ### S20: Rivermax ST2110 streaming
 
@@ -690,8 +656,7 @@ is independent of it.
 The machine has a Mellanox ConnectX-6 NIC capable of hardware-
 accelerated SMPTE ST 2110 media transport via NVIDIA Rivermax. Rivermax
 GPUDirect RDMA allows zero-copy packet I/O between the ConnectX NIC and
-GPU memory over Ethernet — the network-side complement to the AJA
-card's PCIe P2P path (S19).
+GPU memory over Ethernet.
 
 #### Rivermax SDK requirements (v1.81.21)
 
@@ -747,9 +712,7 @@ the SDK.
 The ublue `kmod-nvidia` build compiles `nvidia-peermem` as a non-
 functional stub (`NV_MLNX_IB_PEER_MEM_SYMBOLS_PRESENT` undefined)
 because the build environment lacks DOCA-OFED headers. This stub
-returns `-EINVAL` on load. AJA RDMA (S19) is unaffected — it uses
-NVIDIA's PCIe P2P API (`nvidia_p2p_*` from `nvidia.ko`) directly,
-bypassing IB verbs.
+returns `-EINVAL` on load.
 
 #### Design
 
@@ -777,7 +740,7 @@ Host-side changes required:
    are published for RHEL — Fedora compatibility is unverified.
 2. **Rebuild `nvidia-peermem.ko`** with DOCA-OFED headers present so
    `NV_MLNX_IB_PEER_MEM_SYMBOLS_PRESENT` is defined. This can follow
-   the same Containerfile build-stage pattern as AJA (S19): compile
+   the same Containerfile build-stage pattern as kmod-nvidia: compile
    from NVIDIA open-gpu-kernel-modules source, overlay the `.ko` on
    top of the stub from `kmod-nvidia`.
 3. **`modules-load.d` entry for `nvidia-peermem`** once the module is
