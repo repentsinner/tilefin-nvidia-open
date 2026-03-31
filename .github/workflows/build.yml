@@ -4,15 +4,8 @@ on:
   pull_request:
     branches:
       - main
-    paths-ignore:
-      - '*.md'
-      - 'LICENSE'
-      - '.github/**'
-      - 'disk_config/**'
-      - 'cosign.*'
-      - 'release-please-config.json'
-      - 'version.txt'
-      - 'artifacthub-repo.yml'
+    # No paths-ignore here — CI Gate must always report a status.
+    # The 'changes' job below skips the build for docs-only PRs.
   schedule:
     - cron: '05 10 * * *'  # 10:05am UTC everyday
   push:
@@ -44,8 +37,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect changes
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      build: ${{ steps.filter.outputs.build }}
+    steps:
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3
+        id: filter
+        with:
+          filters: |
+            build:
+              - '**'
+              - '!*.md'
+              - '!LICENSE'
+              - '!.github/**'
+              - '!disk_config/**'
+              - '!cosign.*'
+              - '!release-please-config.json'
+              - '!version.txt'
+              - '!artifacthub-repo.yml'
+
   build_push:
     name: Build and push image
+    needs: [changes]
+    if: github.event_name != 'pull_request' || needs.changes.outputs.build == 'true'
     runs-on: ubuntu-24.04
 
     permissions:
