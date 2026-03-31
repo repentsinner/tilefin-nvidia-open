@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.7](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.4.6...v0.4.7) (2026-03-31)
+
+
+### Features
+
+* **bmd:** add ujust recipes for DeckLink driver install ([#37](https://github.com/repentsinner/tilefin-nvidia-open/issues/37)) ([4ae604b](https://github.com/repentsinner/tilefin-nvidia-open/commit/4ae604bfa8e843fbe2f1722927540779fdb72837))
+* **build:** unlimited memlock + Resizable BAR for GPU/RDMA ([#30](https://github.com/repentsinner/tilefin-nvidia-open/issues/30)) ([647a599](https://github.com/repentsinner/tilefin-nvidia-open/commit/647a599f97a76c50e3a9ab2d8dc8377d40e3718c))
+
+
+### Bug Fixes
+
+* **ci:** always run CI Gate on PRs regardless of changed paths ([#36](https://github.com/repentsinner/tilefin-nvidia-open/issues/36)) ([772e10b](https://github.com/repentsinner/tilefin-nvidia-open/commit/772e10b2b2419fd3cf116eddedf3c2a94fa98ade))
+
 ## [0.4.6](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.4.5...v0.4.6) (2026-03-20)
 
 
