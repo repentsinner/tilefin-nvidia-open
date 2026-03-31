@@ -49,6 +49,9 @@ jobs:
       - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3
         id: filter
         with:
+          # 'every' requires each changed file to match ALL patterns.
+          # Without it, '**' matches everything and negations are ignored.
+          predicate-quantifier: 'every'
           filters: |
             build:
               - '**'
