@@ -46,12 +46,21 @@ Completed work is removed — see CHANGELOG.md for history.
 
 ## Dual-channel image publishing (S23)
 
+- **build-needs-fix**: Fix `build_push` skip cascade on non-PR events.
+  The `changes` job is PR-only; `build_push` declares `needs: [changes]`
+  which causes it to skip on tag pushes, schedule, and workflow_dispatch.
+  Add `if: always()` to `build_push` and adjust the existing `if`
+  condition to handle the skipped `changes` output. Verify with a
+  `workflow_dispatch` or tag push that `build_push` runs.
+  Files: `.github/workflows/build.yml`.
+
 - **build-channel-tags**: Add a workflow step that reads `version.txt`
   into a step output. Update `docker/metadata-action` tags: replace
   `latest.YYYYMMDD` and bare `YYYYMMDD` with
   `latest.v<version>.<YYYYMMDD>`. Add `stable` and `<version>` tags
   for `v*` tag builds. Remove `<major>.<minor>` tag. Set
   `org.opencontainers.image.version` label to semver.
+  Depends on **build-needs-fix**.
   Files: `.github/workflows/build.yml`.
 
 - **build-push-gate**: Widen the push-to-GHCR and cosign-signing `if`

@@ -466,17 +466,43 @@ Bluefin-DX), 0.3.0 (Niri on Bluefin-DX), 0.4.0 (Niri on base-nvidia).
 
 The build workflow produces `latest` and `latest.YYYYMMDD` tags on
 every push to main and daily cron. Semver tags (`0.4.4`) are generated
-for release-please tag pushes but never published — the push gate
-requires `refs/heads/main` and rejects `refs/tags/v*`.
+for release-please tag pushes but never published due to two
+independent bugs:
 
-This creates two issues:
+1. **Job dependency skip cascade.** The `build_push` job declares
+   `needs: [changes]`, but the `changes` job only runs on
+   `pull_request` events (`if: github.event_name == 'pull_request'`).
+   On tag pushes, schedule, and `workflow_dispatch`, `changes` is
+   skipped. GitHub Actions propagates `skipped` status through `needs`
+   — all downstream jobs skip unless they use `if: always()`. The
+   `build_push` `if` condition is logically correct but never
+   evaluated because the job is skipped before the condition runs.
 
-1. There is no distinction between "upstream base image rebuilt" and
-   "we shipped a change." A user on `latest` receives both — there is
-   no way to opt into only intentional releases.
-2. Daily tags (`latest.20260318`) carry no indication of which release
-   they derive from. A user cannot tell whether `latest.20260318`
-   contains the changes from `0.4.4` or `0.4.3`.
+2. **Push gate rejects tags.** The Login, Push-to-GHCR, and
+   cosign-signing steps gate on
+   `github.ref == format('refs/heads/{0}', ...)`, which excludes
+   `refs/tags/v*`. Even if `build_push` ran on a tag push, it would
+   build the image but not publish it.
+
+Bug #1 was introduced in PR #36 (`772e10b`, merged 2026-03-31
+after the daily cron). Since then, **no image has been published** —
+push-to-main, scheduled cron, and tag push events all skip
+`build_push`. The last published image is `latest.20260331`, built
+from commit `647a599` by the March 31 scheduled cron before PR #36
+merged. This image predates both the BMD justfile (PR #37) and the
+AJA removal (PR #35).
+
+The result is four user-facing problems:
+
+1. **Image publishing is completely broken.** No new images have
+   reached GHCR since the `changes` job was added.
+2. Semver-tagged images never reach GHCR. There is no `stable`
+   channel and no way to pin to a known release.
+3. There is no distinction between "upstream base image rebuilt" and
+   "we shipped a change." A user on `latest` receives both.
+4. Daily tags (`latest.20260318`) carry no indication of which
+   release they derive from. A user cannot tell whether
+   `latest.20260318` contains changes from `0.4.4` or `0.4.3`.
 
 #### Design
 
@@ -541,7 +567,20 @@ Builds triggered by `v*` tags produce tags `stable` and `<version>`.
 The push gate permits `refs/tags/v*` in addition to the default
 branch.
 
-#### R23.3: OCI version label uses semver
+#### R23.3: build_push runs on all non-PR events
+
+The `build_push` job shall not skip on tag pushes, schedule, or
+`workflow_dispatch` due to the `changes` job being skipped. The
+`changes` job remains PR-only (path filtering is only useful for
+PRs). The `build_push` job's dependency on `changes` shall not
+cause a skip cascade for non-PR events.
+
+Rationale: GitHub Actions skips jobs whose `needs` dependencies
+were skipped, regardless of the job's own `if` condition. The fix
+must prevent this propagation without removing path filtering for
+PRs.
+
+#### R23.4: OCI version label uses semver
 
 The `org.opencontainers.image.version` label is set to the value of
 `version.txt` for all builds.
