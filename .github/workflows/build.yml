@@ -64,7 +64,7 @@ jobs:
   build_push:
     name: Build and push image
     needs: [changes]
-    if: github.event_name != 'pull_request' || needs.changes.outputs.build == 'true'
+    if: always() && (github.event_name != 'pull_request' || needs.changes.outputs.build == 'true')
     runs-on: ubuntu-24.04
 
     permissions:
