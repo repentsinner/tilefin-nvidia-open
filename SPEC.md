@@ -484,17 +484,23 @@ independent bugs:
    `refs/tags/v*`. Even if `build_push` ran on a tag push, it would
    build the image but not publish it.
 
-These bugs have been present since the `changes` job was added for
-PR path filtering. The `v0.4.7` tag push (2026-04-01) triggered a
-build run that skipped `build_push` entirely, confirming the cascade.
+Bug #1 was introduced in PR #36 (`772e10b`, merged 2026-03-31
+after the daily cron). Since then, **no image has been published** —
+push-to-main, scheduled cron, and tag push events all skip
+`build_push`. The last published image is `latest.20260331`, built
+from commit `647a599` by the March 31 scheduled cron before PR #36
+merged. This image predates both the BMD justfile (PR #37) and the
+AJA removal (PR #35).
 
-The result is three user-facing problems:
+The result is four user-facing problems:
 
-1. Semver-tagged images never reach GHCR. There is no `stable`
+1. **Image publishing is completely broken.** No new images have
+   reached GHCR since the `changes` job was added.
+2. Semver-tagged images never reach GHCR. There is no `stable`
    channel and no way to pin to a known release.
-2. There is no distinction between "upstream base image rebuilt" and
+3. There is no distinction between "upstream base image rebuilt" and
    "we shipped a change." A user on `latest` receives both.
-3. Daily tags (`latest.20260318`) carry no indication of which
+4. Daily tags (`latest.20260318`) carry no indication of which
    release they derive from. A user cannot tell whether
    `latest.20260318` contains changes from `0.4.4` or `0.4.3`.
 
