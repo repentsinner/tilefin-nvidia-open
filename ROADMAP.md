@@ -12,15 +12,13 @@ Completed work is removed — see CHANGELOG.md for history.
   Files: `Containerfile`, `build_files/build.sh`,
   `build_files/ajantv2-modules-load.conf`.
 
-- **decklink-justfile**: Add `ujust setup-decklink` recipe to
-  `build_files/tilefin.just`. Accepts path to Blackmagic
-  `desktopvideo` RPM. Installs RPM if not present, copies kernel
-  module source to writable location, builds against running kernel
-  headers (`KERNELDIR=/usr/src/kernels/$(uname -r)`), installs `.ko`
-  files to `/var/lib/blackmagic-io/`, creates and enables a
-  systemd user service to `insmod` at boot. Idempotent — safe to
-  re-run after kernel updates. Depends on **remove-aja-containerfile**.
-  Files: `build_files/tilefin.just`.
+- **bmd-justfile-import**: `build.sh` copies `bmd.just` to
+  `61-bmd.just` but nothing imports it — `ujust bmd-install` is
+  invisible. Introduce `60-custom.just` as an import shim: rename
+  `tilefin.just` install to `61-tilefin.just`, `bmd.just` to
+  `62-bmd.just`, and create `build_files/60-custom.just` with
+  `import?` lines for both. Update `build.sh` cp lines.
+  Files: `build_files/60-custom.just` (new), `build_files/build.sh`.
 
 ## Dynamic GPU detection (S16)
 
