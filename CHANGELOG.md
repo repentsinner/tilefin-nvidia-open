@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.8](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.4.7...v0.4.8) (2026-04-02)
+
+
+### Bug Fixes
+
+* **ci:** trigger release for PR [#38](https://github.com/repentsinner/tilefin-nvidia-open/issues/38) changes ([#40](https://github.com/repentsinner/tilefin-nvidia-open/issues/40)) ([efba9ca](https://github.com/repentsinner/tilefin-nvidia-open/commit/efba9cad93d7c65121761c0d1c36c8b99323e824))
+
 ## [0.4.7](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.4.6...v0.4.7) (2026-03-31)
 
 
