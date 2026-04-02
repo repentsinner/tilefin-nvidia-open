@@ -282,10 +282,27 @@ provides a working default; chezmoi overwrites it once available.
 
 #### R12.5: ujust setup-user recipe
 
-`tilefin.just` is installed as `/usr/share/ublue-os/just/60-custom.just`,
-the extension point that the base image's ujust justfile imports. It
-provides a `setup-user` recipe that provisions a new user's development
-environment in one step:
+The `ublue-os-just` package owns `/usr/share/ublue-os/justfile` and
+imports numbered `.just` files up through `50-akmods.just`. It provides
+a single downstream extension point: `import? ".../60-custom.just"`.
+`just` has no glob imports, so files placed in the directory but not
+imported are invisible to `ujust`.
+
+`60-custom.just` is a shim that chains imports to domain-specific
+recipe files. It contains no recipes of its own. The image build
+installs it alongside the recipe files it references:
+
+| Source file | Installed as | Content |
+|---|---|---|
+| `build_files/60-custom.just` | `60-custom.just` | Import shim |
+| `build_files/tilefin.just` | `61-tilefin.just` | General recipes (`setup-user`) |
+| `build_files/bmd.just` | `62-bmd.just` | Blackmagic DeckLink recipes |
+
+Adding a new recipe domain: create a `.just` file, add an `import?`
+line to `60-custom.just`, and a `cp` line to `build.sh`.
+
+`tilefin.just` provides a `setup-user` recipe that provisions a new
+user's development environment in one step:
 
 The recipe presents three interactive gum menus (all items selected by
 default, user deselects with space):
@@ -672,16 +689,22 @@ The replacement capture card is a Blackmagic DeckLink 8K Pro G2
 a EULA and cannot be redistributed.
 
 Because the driver is proprietary, it cannot be baked into the public
-image. Instead, a `ujust` recipe automates the out-of-band build and
-install workflow:
+image. Instead, `ujust bmd-install` automates the out-of-band build
+and install workflow:
 
-1. User downloads the `desktopvideo` RPM after accepting the EULA.
-2. `ujust setup-decklink <path-to-rpm>` installs the RPM (if needed),
-   copies the kernel module source to a writable location, builds
-   against the running kernel's headers, installs the `.ko` files
-   to `/var/lib/blackmagic-io/`, and enables a systemd service
-   to load them at boot.
+1. User downloads the Desktop Video tarball after accepting the EULA.
+2. `ujust bmd-install <path-to-tarball>` extracts the RPM from the
+   tarball, builds kernel modules in a disposable Fedora container
+   against the running kernel, installs modules/firmware/libraries
+   to `/var/lib/blackmagic/`, configures SELinux contexts, installs
+   systemd services (`blackmagic-io.service`,
+   `DesktopVideoHelper.service`), udev rules, and ld.so config.
 3. After kernel updates, the user re-runs the recipe to rebuild.
+
+The recipe lives in `build_files/bmd.just`, installed as
+`/usr/share/ublue-os/just/62-bmd.just` and imported via the
+`60-custom.just` shim (see R12.5). A companion `bmd-uninstall` recipe removes all installed
+artifacts.
 
 The DeckLink's 64-bit DMA mask imposes no IOMMU constraints.
 `iommu=pt` is safe with this card.
