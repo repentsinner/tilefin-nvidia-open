@@ -408,7 +408,8 @@ EOF
 ###############################################################################
 
 echo "Installing custom ujust recipes..."
-cp /ctx/tilefin.just /usr/share/ublue-os/just/60-custom.just
-cp /ctx/bmd.just /usr/share/ublue-os/just/61-bmd.just
+cp /ctx/60-custom.just /usr/share/ublue-os/just/60-custom.just
+cp /ctx/tilefin.just /usr/share/ublue-os/just/61-tilefin.just
+cp /ctx/bmd.just /usr/share/ublue-os/just/62-bmd.just
 
 echo "Build complete!"

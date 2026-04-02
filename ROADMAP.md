@@ -12,13 +12,6 @@ Completed work is removed — see CHANGELOG.md for history.
   Files: `Containerfile`, `build_files/build.sh`,
   `build_files/ajantv2-modules-load.conf`.
 
-- **bmd-justfile-import**: `build.sh` copies `bmd.just` to
-  `61-bmd.just` but nothing imports it — `ujust bmd-install` is
-  invisible. Introduce `60-custom.just` as an import shim: rename
-  `tilefin.just` install to `61-tilefin.just`, `bmd.just` to
-  `62-bmd.just`, and create `build_files/60-custom.just` with
-  `import?` lines for both. Update `build.sh` cp lines.
-  Files: `build_files/60-custom.just` (new), `build_files/build.sh`.
 
 ## Dynamic GPU detection (S16)
 
