@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.9](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.4.8...v0.4.9) (2026-04-02)
+
+
+### Bug Fixes
+
+* **build:** bmd justfile import ([#43](https://github.com/repentsinner/tilefin-nvidia-open/issues/43)) ([f80e3c9](https://github.com/repentsinner/tilefin-nvidia-open/commit/f80e3c9ccd10833e6afb90323a1f1e1359aeed6f))
+
 ## [0.4.8](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.4.7...v0.4.8) (2026-04-02)
 
 
