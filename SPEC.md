@@ -891,6 +891,38 @@ nwg-bar package.
 The nwg-bar config (`bar.json`) includes a Sleep entry that runs
 `systemctl suspend`, positioned between Lock and Logout.
 
+### S24: EGL-Wayland platform plugin
+
+*Status: in progress*
+
+#### Problem
+
+NVIDIA's EGL implementation does not natively know how to create Wayland
+surfaces. Without the `egl-wayland` package, `eglGetPlatformDisplay(
+EGL_PLATFORM_WAYLAND, ...)` falls back to Mesa's EGL, which cannot drive
+NVIDIA hardware. GDK/Flutter applications then either software-render or
+fail to initialize.
+
+Nothing in the base-nvidia driver stack pulls `egl-wayland` as a
+dependency — it must be installed explicitly.
+
+#### Design
+
+The image installs `egl-wayland` in the `WAYLAND_CORE` package group.
+This allows NVIDIA's EGL to handle Wayland platform display requests,
+enabling:
+
+- GDK/Flutter UI rendering directly on the NVIDIA EGL backend.
+- Thermion/Filament sharing Flutter's NVIDIA EGL context and display
+  via `EGLImage`, avoiding a cross-driver copy.
+
+#### R24.1: egl-wayland in image
+
+`egl-wayland` is present in the installed image, providing
+`/usr/lib64/libnvidia-egl-wayland.so.1` and the EGL external platform
+registration at
+`/usr/share/egl/egl_external_platform.d/10_nvidia_wayland.json`.
+
 ## Out of scope
 
 - **User dotfiles**: Managed by chezmoi in a separate repo. This image
@@ -899,5 +931,7 @@ The nwg-bar config (`bar.json`) includes a Sleep entry that runs
 - **Userbox Containerfile**: Lives in repentsinner/userbox. This spec
   covers the image-side changes only (R12.1–R12.5).
 - **Flutter/FVM**: Future addition to the userbox Containerfile.
+  The host image provides `egl-wayland` for NVIDIA-accelerated
+  rendering (S24); Flutter itself runs in the userbox.
 - **Flatpak apps beyond Bitwarden**: User-installed via
   `flatpak install --user`.

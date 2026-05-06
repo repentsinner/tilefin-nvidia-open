@@ -59,6 +59,16 @@ Completed work is removed — see CHANGELOG.md for history.
   branch. Depends on **build-channel-tags**.
   Files: `.github/workflows/build.yml`.
 
+## EGL-Wayland platform plugin (S24)
+
+- **egl-wayland-package**: Add `egl-wayland` to the `WAYLAND_CORE`
+  package group in `build_files/build.sh` so NVIDIA's EGL can handle
+  `EGL_PLATFORM_WAYLAND` display requests. Verifiable when the built
+  image contains `/usr/lib64/libnvidia-egl-wayland.so.1` and
+  `/usr/share/egl/egl_external_platform.d/10_nvidia_wayland.json`.
+  No dependencies, but won't reach users until S23 republishes images.
+  Files: `build_files/build.sh`.
+
 ## Sunshine streaming server (S13)
 
 - **sunshine-research**: Research Sunshine packaging on Fedora, Niri/
