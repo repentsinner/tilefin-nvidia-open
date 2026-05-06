@@ -925,7 +925,7 @@ registration at
 
 ### S25: Production-mode update lock
 
-*Status: not started*
+*Status: in progress*
 
 #### Problem
 

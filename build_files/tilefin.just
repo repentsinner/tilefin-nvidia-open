@@ -81,3 +81,77 @@ setup-user image="":
 
     echo ""
     echo "==> Done. Restart your shell or run: source ~/.bashrc"
+
+# Toggle production-mode update lock (--start | --stop | --start-from-current)
+production-mode mode="--start":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FLAG_DIR="/etc/tilefin"
+    FLAG_FILE="${FLAG_DIR}/production-mode"
+
+    function sudoif(){
+        if [[ "${UID}" -eq 0 ]]; then
+            "$@"
+        elif [[ "$(command -v sudo)" && -n "${SSH_ASKPASS:-}" ]] && [[ -n "${DISPLAY:-}" || -n "${WAYLAND_DISPLAY:-}" ]]; then
+            /usr/bin/sudo --askpass "$@" || exit 1
+        elif [[ "$(command -v sudo)" ]]; then
+            /usr/bin/sudo "$@" || exit 1
+        else
+            exit 1
+        fi
+    }
+
+    case "{{ mode }}" in
+        --start|--start-from-current)
+            STAGED_VERSION=$(rpm-ostree status --json 2>/dev/null \
+                | jq -r '[.deployments[] | select(.staged)][0].version // empty')
+
+            UNSTAGE="no"
+            if [ -n "${STAGED_VERSION}" ]; then
+                if [ "{{ mode }}" = "--start-from-current" ]; then
+                    UNSTAGE="yes"
+                else
+                    echo "A deployment is already staged: ${STAGED_VERSION}"
+                    echo ""
+                    CHOICE=$(gum choose --selected="Keep staged deployment" \
+                        --header="Production mode blocks future staging. What about the existing one?" \
+                        "Keep staged deployment" \
+                        "Unstage (next reboot keeps current image)")
+                    if [ "${CHOICE}" = "Unstage (next reboot keeps current image)" ]; then
+                        UNSTAGE="yes"
+                    fi
+                fi
+            fi
+
+            if [ "${UNSTAGE}" = "yes" ]; then
+                echo "==> Unstaging deployment ${STAGED_VERSION}..."
+                sudoif rpm-ostree cleanup -p
+            fi
+
+            echo "==> Enabling production mode..."
+            sudoif install -d -m 755 "${FLAG_DIR}"
+            sudoif touch "${FLAG_FILE}"
+            echo "Flag created: ${FLAG_FILE}"
+            echo "rpm-ostreed-automatic.service is now blocked at the timer."
+            echo "Manual updates (bootc upgrade, rpm-ostree update, ujust update) still work."
+            ;;
+        --stop)
+            if [ -e "${FLAG_FILE}" ]; then
+                echo "==> Disabling production mode..."
+                sudoif rm -f "${FLAG_FILE}"
+                echo "Flag removed: ${FLAG_FILE}"
+                echo "Auto-staging resumes on the next rpm-ostreed-automatic.timer firing."
+            else
+                echo "Production mode is already off (${FLAG_FILE} does not exist)."
+            fi
+            ;;
+        *)
+            echo "Usage: ujust production-mode [--start | --stop | --start-from-current]"
+            echo ""
+            echo "  --start                Enable update lock. Interactive if a deployment is staged."
+            echo "  --start-from-current   Enable update lock and unstage any staged deployment."
+            echo "  --stop                 Disable update lock; auto-staging resumes."
+            exit 1
+            ;;
+    esac
