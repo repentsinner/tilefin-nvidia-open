@@ -972,8 +972,9 @@ A `ujust production-mode` recipe owns the lifecycle. `--start` is
 interactive when a deployment is already staged: it surfaces the
 staged version and asks whether to keep it (next reboot still applies
 it; production mode only blocks future staging) or unstage it (reboot
-returns to the currently booted image). `--start-and-clean` is the
-non-interactive form that always unstages. `--stop` removes the flag;
+returns to the currently booted image). `--start-from-current` is the
+non-interactive form that always unstages, guaranteeing the next
+reboot lands on the currently booted image. `--stop` removes the flag;
 the next timer firing resumes staging.
 
 Waybar surfaces the mode explicitly in the update-check tooltip and
@@ -1014,11 +1015,12 @@ timer-triggered automatic staging.
 
 #### R25.3: ujust production-mode recipe
 
-`ujust production-mode --start | --stop | --start-and-clean` toggles
-the flag. `--start` is interactive: when a deployment is staged at the
-time production mode is enabled, the user is prompted to keep or
-unstage it. `--start-and-clean` always unstages any staged deployment
-non-interactively. `--stop` removes the flag.
+`ujust production-mode --start | --stop | --start-from-current`
+toggles the flag. `--start` is interactive: when a deployment is
+staged at the time production mode is enabled, the user is prompted
+to keep or unstage it. `--start-from-current` always unstages any
+staged deployment non-interactively, guaranteeing the next reboot
+boots the currently running image. `--stop` removes the flag.
 
 #### R25.4: Waybar surfaces production mode
 
