@@ -923,6 +923,114 @@ enabling:
 registration at
 `/usr/share/egl/egl_external_platform.d/10_nvidia_wayland.json`.
 
+### S25: Production-mode update lock
+
+*Status: not started*
+
+#### Problem
+
+`rpm-ostreed-automatic.timer` runs in `stage` mode (S8): it fetches the
+latest image and stages it as the next deployment while the system is
+running. The next reboot — whatever the reason — applies the staged
+image. There is no per-machine way to opt out without disabling the
+timer entirely.
+
+For live workloads (video capture, broadcast, ST2110 streaming, GPU
+passthrough VMs) the user's mental model of a reboot is "the system
+comes back the way I left it." Auto-staging inverts that: every reboot
+is a potential image transition, with kernel modules, NVIDIA driver,
+and capture-card kmod versions changing under the user's feet. The
+staged image is unvalidated against the workload — a regression in
+`kmod-nvidia`, the AJA out-of-tree driver, or peermem header coupling
+(S19, S20) only surfaces post-reboot, often mid-show.
+
+The destructive action is not the reboot — it is staging an unvetted
+image *before* a reboot that the user expects to be non-destructive.
+Production mode preserves the user's "current system is the system I
+want" intent across reboots.
+
+#### Design
+
+A flag file at `/etc/tilefin/production-mode` gates the auto-update
+service. `/etc` is the per-machine mutable tree on bootc/OSTree —
+files written there persist across image upgrades, rollbacks, and
+channel switches. Presence of the file means "production mode is on."
+
+A systemd drop-in adds `ConditionPathExists=!/etc/tilefin/production-mode`
+to `rpm-ostreed-automatic.service`. The timer keeps firing on schedule;
+each invocation checks the condition and silently no-ops while the flag
+exists. Re-enabling auto-updates is a single `rm` away — no `systemctl
+enable` dance, no risk of image rebuilds re-enabling masked units.
+
+The lock blocks **automatic** staging only. Manual `bootc upgrade`,
+`rpm-ostree update`, and `ujust update` go through `rpm-ostreed.service`
+(the DBus daemon), not `rpm-ostreed-automatic.service`, and remain
+available. A user in production mode who explicitly wants the latest
+image can still apply it — the lock prevents surprise, not control.
+
+A `ujust production-mode` recipe owns the lifecycle. `--start` is
+interactive when a deployment is already staged: it surfaces the
+staged version and asks whether to keep it (next reboot still applies
+it; production mode only blocks future staging) or unstage it (reboot
+returns to the currently booted image). `--start-from-current` is the
+non-interactive form that always unstages, guaranteeing the next
+reboot lands on the currently booted image. `--stop` removes the flag;
+the next timer firing resumes staging.
+
+Waybar surfaces the mode explicitly in the update-check tooltip and
+text (e.g., `production · 5d` vs `development · 5d`) so the user
+sees current state at a glance, not just by inspecting `systemctl
+status`.
+
+##### Rejected alternatives
+
+- **`systemctl mask rpm-ostreed-automatic.timer`** — works, but the
+  mask state lives in `/etc/systemd/system/` as a symlink to
+  `/dev/null`. It is not a grep-able policy flag, does not extend
+  cleanly to a second timer (e.g., if the base image later enables
+  `bootc-fetch-apply-updates.timer`), and is harder to inspect than
+  a bare flag file.
+- **Disable the timer entirely** — loses the "ready to resume" path.
+  Re-enabling is friction; toggling a flag is not.
+- **`ExecStartPre` wrapper script that exits non-zero on the flag** —
+  same effective behavior as `ConditionPathExists` with more moving
+  parts and journal noise. The condition idiom is exactly what
+  systemd provides for this.
+- **Lock in `/var/` instead of `/etc/`** — `/var` is conventionally
+  machine state (caches, spools, logs); `/etc` is policy. A flag
+  toggling system update policy belongs with policy.
+
+#### R25.1: Flag file gates auto-staging
+
+When `/etc/tilefin/production-mode` exists, `rpm-ostreed-automatic.service`
+does not run when triggered by its timer. `systemctl status
+rpm-ostreed-automatic.service` reports the unmet condition. When the
+flag is removed, the next timer firing stages updates as before.
+
+#### R25.2: Manual updates remain available
+
+When production mode is on, `bootc upgrade`, `rpm-ostree update`, and
+`ujust update` apply updates as normal. The lock applies only to
+timer-triggered automatic staging.
+
+#### R25.3: ujust production-mode recipe
+
+`ujust production-mode --start | --stop | --start-from-current`
+toggles the flag. `--start` is interactive: when a deployment is
+staged at the time production mode is enabled, the user is prompted
+to keep or unstage it. `--start-from-current` always unstages any
+staged deployment non-interactively, guaranteeing the next reboot
+boots the currently running image. `--stop` removes the flag.
+
+#### R25.4: Waybar surfaces production mode
+
+When production mode is on, the waybar update module text reads
+`production · <age>` and the tooltip includes a `Mode: production`
+line. When off, the text reads `development · <age>` and the
+tooltip shows `Mode: development`. Staging information continues to
+display as in S8 — production mode does not hide a manually-staged
+deployment.
+
 ## Out of scope
 
 - **User dotfiles**: Managed by chezmoi in a separate repo. This image
