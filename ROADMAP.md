@@ -69,41 +69,6 @@ Completed work is removed — see CHANGELOG.md for history.
   No dependencies, but won't reach users until S23 republishes images.
   Files: `build_files/build.sh`.
 
-## Production-mode update lock (S25)
-
-- **production-mode**: Ship a `ConditionPathExists=!/etc/tilefin/production-mode`
-  drop-in for `rpm-ostreed-automatic.service`, a `ujust production-mode
-  --start | --stop | --start-from-current` recipe (interactive when a
-  deployment is already staged at `--start` time, prompting keep vs.
-  unstage via gum), and a waybar update-check extension that prefixes
-  the module text with `production` or `development` and adds a
-  `Mode:` line to the tooltip. The drop-in installs to
-  `/usr/lib/systemd/system/rpm-ostreed-automatic.service.d/` so it
-  ships read-only with the image; the flag file lives in `/etc` so
-  it persists per-machine across image upgrades. No dependencies.
-  Files: new `build_files/rpm-ostreed-automatic-production.conf`,
-  `build_files/build.sh`, `build_files/tilefin.just`,
-  `build_files/update-check.sh`.
-
-  **Verify:** Build the image, rebase, and reboot. Confirm the
-  waybar update module reads `development · <age>` with `Mode:
-  development` in the tooltip. Run `ujust production-mode --start`;
-  confirm `/etc/tilefin/production-mode` exists, the waybar text
-  switches to `production · <age>`, and the tooltip shows `Mode:
-  production`. Run `sudo systemctl start rpm-ostreed-automatic.service`;
-  confirm `systemctl status rpm-ostreed-automatic.service` reports
-  the `ConditionPathExists` is unmet and no new deployment is staged
-  (`rpm-ostree status` shows no staged entry). Run `sudo bootc upgrade
-  --check` (or `rpm-ostree update --preview`); confirm manual update
-  paths still work. Run `ujust production-mode --stop`; confirm the
-  flag file is removed and the next service start stages updates as
-  before. Re-stage a deployment manually, then run `ujust
-  production-mode --start` again; confirm the recipe surfaces the
-  staged version interactively. Run `ujust production-mode
-  --start-from-current` while a deployment is staged; confirm the
-  staged deployment is unstaged and the booted image remains the
-  default for next reboot.
-
 ## Sunshine streaming server (S13)
 
 - **sunshine-research**: Research Sunshine packaging on Fedora, Niri/

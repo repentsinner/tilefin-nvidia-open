@@ -128,6 +128,12 @@ COPR_REPOS=(
 systemctl enable podman.socket
 systemctl enable rpm-ostreed-automatic.timer  # Auto-stage image upgrades
 
+# Production-mode update lock (S25): drop-in gates auto-staging on the
+# presence of /etc/tilefin/production-mode. The drop-in ships read-only
+# in /usr/lib/; the flag file is mutable per-machine in /etc/.
+install -Dm644 /ctx/rpm-ostreed-automatic-production.conf \
+    /usr/lib/systemd/system/rpm-ostreed-automatic.service.d/production.conf
+
 ###############################################################################
 # Configure Repositories
 ###############################################################################

@@ -1,6 +1,13 @@
 #!/bin/bash
 # Waybar module: show image age (fuzzy) and update availability
 
+# Production-mode flag (S25). Toggled by `ujust production-mode --start|--stop`.
+if [ -f /etc/tilefin/production-mode ]; then
+    MODE="production"
+else
+    MODE="development"
+fi
+
 fuzzy_age() {
     local seconds=$1
     local minutes=$((seconds / 60))
@@ -48,7 +55,7 @@ fi
 if [ -n "$STAGED_VERSION" ] && [ "$STAGED_TS" != "$BOOTED_TS" ]; then
     STAGED_AGE=$(fuzzy_age $((NOW - STAGED_TS)))
     BOOTED_AGE_SECS=$((NOW - BOOTED_TS))
-    TEXT=" ${AGE}"
+    TEXT=" ${MODE} · ${AGE}"
 
     # Package diff between booted and staged deployments
     # Output format: section headers (Upgraded:, Added:, etc.) followed by indented package lines
@@ -78,15 +85,15 @@ if [ -n "$STAGED_VERSION" ] && [ "$STAGED_TS" != "$BOOTED_TS" ]; then
         fi
     fi
 
-    TOOLTIP="Booted: ${BOOTED_VERSION} (${AGE} ago)\nStaged: ${STAGED_VERSION} (${STAGED_AGE} ago)\nImage: ${STAGED_IMAGE}${PKG_SUMMARY}\nReboot to apply"
+    TOOLTIP="Mode: ${MODE}\nBooted: ${BOOTED_VERSION} (${AGE} ago)\nStaged: ${STAGED_VERSION} (${STAGED_AGE} ago)\nImage: ${STAGED_IMAGE}${PKG_SUMMARY}\nReboot to apply"
     if [ "$BOOTED_AGE_SECS" -ge 172800 ]; then
         CLASS="update-stale"
     else
         CLASS="update-available"
     fi
 else
-    TEXT="${AGE}"
-    TOOLTIP="Image: ${BOOTED_IMAGE}\nVersion: ${BOOTED_VERSION}\nBuilt: $(date -d @"$BOOTED_TS" '+%Y-%m-%d %H:%M' 2>/dev/null)"
+    TEXT="${MODE} · ${AGE}"
+    TOOLTIP="Mode: ${MODE}\nImage: ${BOOTED_IMAGE}\nVersion: ${BOOTED_VERSION}\nBuilt: $(date -d @"$BOOTED_TS" '+%Y-%m-%d %H:%M' 2>/dev/null)"
     CLASS=""
 fi
 
