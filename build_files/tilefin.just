@@ -135,6 +135,7 @@ production-mode mode="--start":
             echo "Flag created: ${FLAG_FILE}"
             echo "rpm-ostreed-automatic.service is now blocked at the timer."
             echo "Manual updates (bootc upgrade, rpm-ostree update, ujust update) still work."
+            pkill -RTMIN+8 waybar 2>/dev/null || true
             ;;
         --stop)
             if [ -e "${FLAG_FILE}" ]; then
@@ -142,6 +143,7 @@ production-mode mode="--start":
                 sudoif rm -f "${FLAG_FILE}"
                 echo "Flag removed: ${FLAG_FILE}"
                 echo "Auto-staging resumes on the next rpm-ostreed-automatic.timer firing."
+                pkill -RTMIN+8 waybar 2>/dev/null || true
             else
                 echo "Production mode is already off (${FLAG_FILE} does not exist)."
             fi
