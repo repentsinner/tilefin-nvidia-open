@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.10](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.4.9...v0.4.10) (2026-05-07)
+
+
+### Features
+
+* **updates:** add S25 production-mode update lock ([#48](https://github.com/repentsinner/tilefin-nvidia-open/issues/48)) ([c0c3e45](https://github.com/repentsinner/tilefin-nvidia-open/commit/c0c3e457d4f2cfa8da24b51686d68837ea08abdb))
+
+
+### Bug Fixes
+
+* **updates:** refresh waybar immediately on production-mode toggle ([#50](https://github.com/repentsinner/tilefin-nvidia-open/issues/50)) ([c4dca9e](https://github.com/repentsinner/tilefin-nvidia-open/commit/c4dca9e64989502b4286d2c08b78061b71f6e942))
+
 ## [0.4.9](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.4.8...v0.4.9) (2026-04-02)
 
 
