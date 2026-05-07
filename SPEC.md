@@ -658,7 +658,7 @@ appropriate type and config file.
 
 ### S19: Video capture kernel module
 
-*Status: in progress*
+*Status: complete*
 
 #### Problem
 
