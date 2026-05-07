@@ -3,16 +3,6 @@
 Planned work derived from SPEC.md. Sections in build-dependency order.
 Completed work is removed — see CHANGELOG.md for history.
 
-## Remove AJA Corvid44 / add DeckLink support (S19)
-
-- **remove-aja-containerfile**: Remove `aja-kmod-builder` build stage
-  and AJA module install step from Containerfile. Remove
-  `build_files/ajantv2-modules-load.conf`. Remove AJA modules-load
-  copy and update memlock comment in `build.sh`.
-  Files: `Containerfile`, `build_files/build.sh`,
-  `build_files/ajantv2-modules-load.conf`.
-
-
 ## Dynamic GPU detection (S16)
 
 - **niri-gpu-detect**: Move Nvidia env vars from `niri-config.kdl` to

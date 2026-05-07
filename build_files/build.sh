@@ -355,17 +355,13 @@ polkit.addRule(function(action, subject) {
 });
 EOF
 
-# AJA Corvid44 kernel module auto-load
-mkdir -p /etc/modules-load.d
-cp /ctx/ajantv2-modules-load.conf /etc/modules-load.d/ajantv2.conf
-
 # Raise memlock limit for GPU/RDMA workloads (nvidia_p2p_get_pages,
 # ibv_reg_mr). Applies to all users in wheel group.
 # PAM path — covers interactive login sessions (greetd → niri → terminal)
 mkdir -p /etc/security/limits.d
 cat > /etc/security/limits.d/99-memlock.conf <<'EOF'
 # Unlimited memlock for wheel group — required for GPU pinned memory
-# and RDMA verb registration (AJA GPUDirect, future Rivermax)
+# and RDMA verb registration (DeckLink capture, future Rivermax)
 @wheel  -  memlock  unlimited
 EOF
 
