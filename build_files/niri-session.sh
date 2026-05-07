@@ -32,4 +32,4 @@ if [ "$nvidia_has_display" = true ]; then
     export LIBVA_DRIVER_NAME="nvidia"
 fi
 
-exec niri
+exec niri --session
