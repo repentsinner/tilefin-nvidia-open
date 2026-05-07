@@ -85,7 +85,8 @@ environment {
 }
 
 // Autostart applications
-spawn-at-startup "sh" "-c" "dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=niri"
+// niri --session handles systemd/D-Bus environment import natively;
+// no dbus-update-activation-environment shim is needed.
 spawn-at-startup "lxpolkit"
 spawn-at-startup "mako"
 spawn-at-startup "waybar"
