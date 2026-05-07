@@ -80,6 +80,7 @@
         "exec": "/usr/share/tilefin/scripts/update-check.sh",
         "return-type": "json",
         "interval": 3600,
+        "signal": 8,
         "tooltip": true
     }
 }

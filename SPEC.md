@@ -1031,6 +1031,12 @@ tooltip shows `Mode: development`. Staging information continues to
 display as in S8 — production mode does not hide a manually-staged
 deployment.
 
+The module re-execs immediately when the flag is toggled. The
+`custom/update-check` module declares `"signal": 8`; the ujust
+recipe sends `SIGRTMIN+8` to waybar after touching or removing the
+flag, so the bar reflects the new mode without waiting for the
+hourly poll. A reboot is not required.
+
 ## Out of scope
 
 - **User dotfiles**: Managed by chezmoi in a separate repo. This image
