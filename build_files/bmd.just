@@ -5,7 +5,6 @@
 # redistributable — download it from blackmagicdesign.com and pass the
 # path to bmd-install.
 
-export bmd_version := "15.3.1a4"
 export bmd_install_dir := "/var/lib/blackmagic"
 export bmd_module_dir := "/var/lib/blackmagic/modules"
 export bmd_firmware_dir := "/var/lib/blackmagic/firmware"
@@ -25,16 +24,25 @@ bmd-install tarball:
     echo "==> Building Blackmagic modules for kernel ${KERNEL_RELEASE}"
     echo "  Working in ${BUILD_DIR}"
 
-    # Extract tarball and RPM
+    # Extract tarball
     echo "  Extracting tarball..."
     tar xzf "{{ tarball }}" -C "${BUILD_DIR}" --strip-components=1
 
-    RPM="${BUILD_DIR}/rpm/x86_64/desktopvideo-{{ bmd_version }}.x86_64.rpm"
-    if [[ ! -f "${RPM}" ]]; then
-        echo "Error: expected RPM not found at ${RPM}"
-        echo "Check bmd_version (currently {{ bmd_version }}) matches the tarball."
-        exit 1
-    fi
+    # Detect BMD version from the extracted RPM filename. Tarballs ship
+    # rpm/x86_64/desktopvideo-<ver>.x86_64.rpm; the same <ver> appears in
+    # usr/src/blackmagic{,-io}-<ver>/, so SRC_IO/SRC_BM follow naturally.
+    # The leading [0-9] excludes the desktopvideo-gui-<ver>.x86_64.rpm sibling.
+    shopt -s nullglob
+    candidates=("${BUILD_DIR}"/rpm/x86_64/desktopvideo-[0-9]*.x86_64.rpm)
+    shopt -u nullglob
+    case ${#candidates[@]} in
+        0) echo "Error: no desktopvideo-<ver>.x86_64.rpm found under ${BUILD_DIR}/rpm/x86_64/"; exit 1 ;;
+        1) RPM="${candidates[0]}" ;;
+        *) echo "Error: multiple desktopvideo RPMs in tarball:"; printf '  %s\n' "${candidates[@]}"; exit 1 ;;
+    esac
+    BMD_VERSION="$(basename "${RPM}" .x86_64.rpm)"
+    BMD_VERSION="${BMD_VERSION#desktopvideo-}"
+    echo "  Detected BMD version: ${BMD_VERSION}"
 
     echo "  Extracting RPM..."
     RPM_ROOT="${BUILD_DIR}/rpm-root"
@@ -45,8 +53,8 @@ bmd-install tarball:
 
     # Build kernel modules in a Fedora container
     echo "  Building kernel modules in container..."
-    SRC_IO="${RPM_ROOT}/usr/src/blackmagic-io-{{ bmd_version }}"
-    SRC_BM="${RPM_ROOT}/usr/src/blackmagic-{{ bmd_version }}"
+    SRC_IO="${RPM_ROOT}/usr/src/blackmagic-io-${BMD_VERSION}"
+    SRC_BM="${RPM_ROOT}/usr/src/blackmagic-${BMD_VERSION}"
 
     # Parse kernel release into Koji URL components.
     # KERNEL_RELEASE is e.g. 6.19.8-100.fc42.x86_64
