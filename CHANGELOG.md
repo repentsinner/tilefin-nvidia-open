@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.11](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.4.10...v0.4.11) (2026-05-08)
+
+
+### Features
+
+* **updates:** gate idle display-off and lock under production mode ([#55](https://github.com/repentsinner/tilefin-nvidia-open/issues/55)) ([3b6fc9d](https://github.com/repentsinner/tilefin-nvidia-open/commit/3b6fc9d4936332f2a19a113d11a6bc6b06503b69))
+
+
+### Bug Fixes
+
+* **bmd:** autodetect version from extracted RPM filename ([#53](https://github.com/repentsinner/tilefin-nvidia-open/issues/53)) ([6cf4d75](https://github.com/repentsinner/tilefin-nvidia-open/commit/6cf4d75d081a81e51241939e9de4305fa98e8319))
+* **bmd:** install firmware to &lt;bin&gt;/Firmware so the updater finds it ([#56](https://github.com/repentsinner/tilefin-nvidia-open/issues/56)) ([07b71bc](https://github.com/repentsinner/tilefin-nvidia-open/commit/07b71bc326c462960946f899952db4b099d28308))
+* **session:** pass --session to niri for systemd env import ([#52](https://github.com/repentsinner/tilefin-nvidia-open/issues/52)) ([27e8d27](https://github.com/repentsinner/tilefin-nvidia-open/commit/27e8d27d1a0afac62bc2321f065e64fc9c7424bf))
+
 ## [0.4.10](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.4.9...v0.4.10) (2026-05-07)
 
 
