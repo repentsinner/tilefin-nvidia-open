@@ -923,7 +923,7 @@ enabling:
 registration at
 `/usr/share/egl/egl_external_platform.d/10_nvidia_wayland.json`.
 
-### S25: Production-mode update lock
+### S25: Production mode
 
 *Status: in progress*
 
@@ -1036,6 +1036,42 @@ The module re-execs immediately when the flag is toggled. The
 recipe sends `SIGRTMIN+8` to waybar after touching or removing the
 flag, so the bar reflects the new mode without waiting for the
 hourly poll. A reboot is not required.
+
+#### R25.5: No idle interruptions in production mode
+
+When `/etc/tilefin/production-mode` exists, the hypridle display-off
+listener (300s) and the lock listener (600s) are both skipped. The
+dim listener (240s) continues to fire as in S5.
+
+The gate lives inline in each gated listener's `on-timeout`:
+`sh -c '[ ! -e /etc/tilefin/production-mode ] && <action>'`. Hypridle
+keeps a single config and is not reloaded on toggle; the flag is
+checked at fire time, so the new mode takes effect on the next idle
+window.
+
+##### Why gate idle display-off and idle lock
+
+Production environments alternate between long idle stretches and
+short urgent bursts of operator activity. A 5-minute display-off or
+10-minute auto-lock in the middle of an idle stretch puts the
+operator behind a black screen or an unlock prompt at the moment
+the workload demands quick interaction.
+
+- **Display-off** hides operator-facing state (status, errors, fader
+  positions, capture telemetry). Returning to a dark screen forces a
+  wake step before any diagnostic is even visible.
+- **Lock** adds an authentication step in the same spot. The mental
+  model in production is "the screen I left up is the screen I come
+  back to" — idle auto-lock breaks it.
+- **Dim** is `brightnessctl`-based and no-ops on desktop hardware
+  (no `backlight` class device). On laptops it is harmless background
+  behavior. Not gated.
+
+Production mode trades automatic-lock security for predictable
+operator latency. The assumption is that production-mode machines
+are physically attended (live broadcast, capture booth, control
+surface) where the room itself enforces access. `Mod+L` still locks
+manually; only the idle trigger is gated.
 
 ## Out of scope
 
