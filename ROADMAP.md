@@ -66,3 +66,22 @@ Completed work is removed — see CHANGELOG.md for history.
   NVENC). Write spec requirements in S13 before implementation.
   Blocked — requirements not yet specified. Unblocked when S13 spec
   is written.
+
+## Release workflow hygiene (S17)
+
+- **auto-merge-release-trigger-fix**: Stop `auto-merge-release.yml`
+  from generating 0-second failure runs on every push event. The
+  workflow declares only `on: pull_request`, yet GitHub creates
+  push-event runs that surface the file path (not the friendly
+  workflow name) as the run identifier, with zero jobs and a
+  `failure` conclusion. The pattern repeats across main, release-
+  please branches, and feature branches — every push leaves a red
+  mark in the Actions tab and erodes the signal value of CI status.
+  The job `if:` references `github.event.pull_request.labels.*.name`,
+  which is undefined on push events; restructure the trigger or guard
+  the `if:` so push-event runs are either not created or cleanly
+  skipped. The fix must not regress the actual auto-merge behavior
+  on release-please PRs (S17). Verify by pushing a no-op commit to a
+  branch and to main and confirming the workflow either produces no
+  run or a clean `skipped` run for each push.
+  Files: `.github/workflows/auto-merge-release.yml`.
