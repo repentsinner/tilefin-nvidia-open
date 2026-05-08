@@ -7,7 +7,6 @@
 
 export bmd_install_dir := "/var/lib/blackmagic"
 export bmd_module_dir := "/var/lib/blackmagic/modules"
-export bmd_firmware_dir := "/var/lib/blackmagic/firmware"
 export bmd_lib_dir := "/var/lib/blackmagic/lib"
 export bmd_bin_dir := "/var/lib/blackmagic/bin"
 
@@ -147,10 +146,13 @@ bmd-install tarball:
         || sudoif semanage fcontext -m -t bin_t '{{ bmd_bin_dir }}(/.*)?' 2>/dev/null \
         || true
 
-    # Firmware blobs
+    # Firmware blobs must live at <bin_dir>/Firmware/ — DesktopVideoUpdateTool
+    # (and its BlackmagicFirmwareUpdater symlink) resolves /proc/self/exe and
+    # appends "/Firmware" to locate them. Any other path is invisible, even
+    # though BlackmagicFirmwareUpdater status still reports OK.
     echo "  Installing firmware..."
-    sudoif mkdir -p {{ bmd_firmware_dir }}
-    sudoif cp "${RPM_ROOT}"/usr/lib64/blackmagic/DesktopVideo/Firmware/*.bin {{ bmd_firmware_dir }}/
+    sudoif mkdir -p {{ bmd_bin_dir }}/Firmware
+    sudoif cp "${RPM_ROOT}"/usr/lib64/blackmagic/DesktopVideo/Firmware/*.bin {{ bmd_bin_dir }}/Firmware/
 
     # SDK libraries (public — on ld.so search path for application linking)
     echo "  Installing SDK libraries..."
