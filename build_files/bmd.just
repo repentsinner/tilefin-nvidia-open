@@ -191,13 +191,20 @@ bmd-install tarball:
     echo "/var/lib/blackmagic/lib" | sudoif tee /etc/ld.so.conf.d/blackmagic.conf > /dev/null
     sudoif ldconfig
 
-    # PATH wrapper for firmware updater
+    # PATH wrappers. The same binary dispatches on basename(argv[0]):
+    #   BlackmagicFirmwareUpdater → stripped positional CLI (status / update <dev>)
+    #   DesktopVideoUpdateTool    → full CLI (--list, --device, --all, --update)
+    # Expose both: the vendor name is what BMD's docs reference; the underlying
+    # tool surfaces real diagnostics (e.g. "Firmware is not found") that the
+    # wrapper hides.
     sudoif mkdir -p /usr/local/bin
-    printf '%s\n' \
-        '#!/usr/bin/env bash' \
-        'exec /var/lib/blackmagic/bin/BlackmagicFirmwareUpdater "$@"' \
-        | sudoif tee /usr/local/bin/BlackmagicFirmwareUpdater > /dev/null
-    sudoif chmod 755 /usr/local/bin/BlackmagicFirmwareUpdater
+    for name in BlackmagicFirmwareUpdater DesktopVideoUpdateTool; do
+        printf '%s\n' \
+            '#!/usr/bin/env bash' \
+            "exec /var/lib/blackmagic/bin/${name} \"\$@\"" \
+            | sudoif tee /usr/local/bin/${name} > /dev/null
+        sudoif chmod 755 /usr/local/bin/${name}
+    done
 
     # Udev rules — notify DesktopVideoHelper on device hotplug
     echo "  Installing udev rules..."
@@ -336,9 +343,10 @@ bmd-uninstall:
     sudoif rm -f /etc/ld.so.conf.d/blackmagic.conf
     sudoif ldconfig
 
-    # Remove wrapper script
-    echo "  Removing firmware updater wrapper..."
+    # Remove wrapper scripts
+    echo "  Removing firmware updater wrappers..."
     sudoif rm -f /usr/local/bin/BlackmagicFirmwareUpdater
+    sudoif rm -f /usr/local/bin/DesktopVideoUpdateTool
 
     # Remove install directory
     echo "  Removing {{ bmd_install_dir }}..."
