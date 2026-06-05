@@ -66,3 +66,39 @@ Completed work is removed — see CHANGELOG.md for history.
   NVENC). Write spec requirements in S13 before implementation.
   Blocked — requirements not yet specified. Unblocked when S13 spec
   is written.
+
+## Time-gated auto-suspend (S26)
+
+- **auto-suspend-core**: Add the guard script that suspends via
+  `systemctl suspend` unless production-mode or business hours (Mon–Fri
+  08:00–18:00), with clock/flag/suspend-cmd overridable for tests
+  (R26.1); add a decision-matrix test covering the production, weekday,
+  weekend, and boundary cases; wire a 1800s hypridle listener to the
+  guard, replacing the commented-out auto-suspend block (R26.2).
+  Files: `build_files/auto-suspend.sh`, `test/auto-suspend.test.sh`,
+  `build_files/hypridle-niri.conf`, `build_files/build.sh`.
+
+- **hypridle-user-service**: Run hypridle as a systemd `--user` service
+  bound to `graphical-session.target` (started by `niri --session`),
+  removing the `spawn-at-startup "hypridle"` line so the daemon is
+  restartable (R26.3). Verify idle dim/lock/display-off still fire after
+  the conversion.
+  Files: `build_files/hypridle.service`, `build_files/niri-config.kdl`,
+  `build_files/build.sh`.
+
+- **hypridle-rearm-timer**: Add a systemd `--user` timer
+  (`OnCalendar=Mon-Fri 18:00`) and service that `try-restart`s hypridle
+  to re-arm idle detection at the business-hours boundary, enabling both
+  units image-wide via `systemctl --global enable` (R26.4).
+  Depends on **hypridle-user-service**.
+  Files: `build_files/tilefin-hypridle-rearm.timer`,
+  `build_files/tilefin-hypridle-rearm.service`, `build_files/build.sh`.
+
+  **Verify:** Run `test/auto-suspend.test.sh` — all decision-matrix
+  cases pass. On the running image in development mode (no
+  `/etc/tilefin/production-mode`): `systemctl --user is-active hypridle`
+  reports active under the niri session; `systemctl --user list-timers`
+  shows `tilefin-hypridle-rearm` scheduled for the next Mon–Fri 18:00;
+  idle dim/lock/display-off still fire; nwg-bar Sleep and `Mod+Shift+L`
+  suspend on demand at any time. Enable production mode and confirm the
+  idle listener no longer suspends.
