@@ -270,6 +270,13 @@ cp /ctx/hypridle-niri.conf /etc/xdg/hypr/hypridle.conf
 # because niri --session does not activate graphical-session.target.
 install -Dm644 /ctx/hypridle.service /usr/lib/systemd/user/hypridle.service
 
+# Weekday 18:00 timer re-arms hypridle at the business-hours boundary
+# (S26 R26.4). Enabled for all users; timers.target is reached by the
+# user manager independent of the graphical session.
+install -Dm644 /ctx/tilefin-hypridle-rearm.service /usr/lib/systemd/user/tilefin-hypridle-rearm.service
+install -Dm644 /ctx/tilefin-hypridle-rearm.timer /usr/lib/systemd/user/tilefin-hypridle-rearm.timer
+systemctl --global enable tilefin-hypridle-rearm.timer
+
 # waybar (status bar)
 # System-wide config via XDG fallback (/etc/xdg/waybar/)
 # Users can override by creating ~/.config/waybar/config

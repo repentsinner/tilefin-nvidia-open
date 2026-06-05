@@ -88,10 +88,10 @@ Completed work is removed — see CHANGELOG.md for history.
   `build_files/build.sh`.
 
 - **hypridle-rearm-timer**: Add a systemd `--user` timer
-  (`OnCalendar=Mon-Fri 18:00`) and service that `try-restart`s hypridle
-  to re-arm idle detection at the business-hours boundary, enabling both
-  units image-wide via `systemctl --global enable` (R26.4).
-  Depends on **hypridle-user-service**.
+  (`OnCalendar=Mon-Fri 18:00`) and a timer-triggered service that
+  `try-restart`s hypridle to re-arm idle detection at the business-hours
+  boundary, enabling the timer image-wide via `systemctl --global enable`
+  (R26.4). Depends on **hypridle-user-service**.
   Files: `build_files/tilefin-hypridle-rearm.timer`,
   `build_files/tilefin-hypridle-rearm.service`, `build_files/build.sh`.
 
