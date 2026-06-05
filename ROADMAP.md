@@ -78,11 +78,12 @@ Completed work is removed — see CHANGELOG.md for history.
   Files: `build_files/auto-suspend.sh`, `test/auto-suspend.test.sh`,
   `build_files/hypridle-niri.conf`, `build_files/build.sh`.
 
-- **hypridle-user-service**: Run hypridle as a systemd `--user` service
-  bound to `graphical-session.target` (started by `niri --session`),
-  removing the `spawn-at-startup "hypridle"` line so the daemon is
-  restartable (R26.3). Verify idle dim/lock/display-off still fire after
-  the conversion.
+- **hypridle-user-service**: Run hypridle as a systemd `--user` service,
+  started by niri `spawn-at-startup "systemctl" "--user" "start"
+  "hypridle.service"` (not bound to `graphical-session.target`, which
+  `niri --session` does not activate), so the daemon is restartable
+  (R26.3). Verify idle dim/lock/display-off still fire after the
+  conversion.
   Files: `build_files/hypridle.service`, `build_files/niri-config.kdl`,
   `build_files/build.sh`.
 

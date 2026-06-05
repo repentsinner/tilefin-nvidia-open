@@ -1078,7 +1078,7 @@ manually; only the idle trigger is gated.
 
 ### S26: Time-gated auto-suspend in development mode
 
-*Status: not started*
+*Status: in progress*
 
 #### Problem
 
@@ -1159,16 +1159,25 @@ guard. This replaces the previously commented-out auto-suspend block.
 
 #### R26.3: hypridle runs as a user service
 
-hypridle runs as a systemd `--user` service bound to
-`graphical-session.target`, started by `niri --session`, rather than via
-niri `spawn-at-startup`. The service is restartable, which the re-arm
-mechanism requires.
+hypridle runs as a systemd `--user` service so the re-arm mechanism can
+restart it. niri starts it from `spawn-at-startup` via
+`systemctl --user start hypridle.service` instead of spawning the bare
+binary; the service inherits `WAYLAND_DISPLAY` and `NIRI_SOCKET` from the
+user manager, which `niri --session` populates.
+
+The service is not bound to `graphical-session.target`. `niri --session`
+imports the session environment into systemd and D-Bus but does not
+activate that target, so a unit wired `WantedBy=graphical-session.target`
+would never start. The compositor spawn is the start trigger instead.
 
 #### R26.4: Weekday re-arm
 
-A systemd `--user` timer fires at 18:00 Monday–Friday and restarts
-hypridle, re-arming idle detection at the business-hours boundary. The
-service and timer are enabled image-wide.
+A systemd `--user` timer fires at 18:00 Monday–Friday, re-arming idle
+detection at the business-hours boundary. It is enabled image-wide via
+`systemctl --global enable` (the user manager reaches `timers.target`
+independent of the graphical session). The timer triggers a service that
+`try-restart`s hypridle — a no-op when hypridle is not running, so an
+absent or already-suspended session is unaffected.
 
 ## Out of scope
 
