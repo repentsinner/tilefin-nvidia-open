@@ -265,6 +265,11 @@ mkdir -p /etc/xdg/hypr
 cp /ctx/hyprlock.conf /etc/xdg/hypr/hyprlock.conf
 cp /ctx/hypridle-niri.conf /etc/xdg/hypr/hypridle.conf
 
+# hypridle runs as a --user service (S26 R26.3) so the re-arm timer can
+# restart it. niri starts it via spawn-at-startup; not enabled here
+# because niri --session does not activate graphical-session.target.
+install -Dm644 /ctx/hypridle.service /usr/lib/systemd/user/hypridle.service
+
 # waybar (status bar)
 # System-wide config via XDG fallback (/etc/xdg/waybar/)
 # Users can override by creating ~/.config/waybar/config
