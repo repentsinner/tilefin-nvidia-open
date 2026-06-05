@@ -273,6 +273,7 @@ cp /ctx/waybar-config-niri.json /etc/xdg/waybar/config
 cp /ctx/waybar-style.css /etc/xdg/waybar/style.css
 install -Dm755 /ctx/update-check.sh /usr/share/tilefin/scripts/update-check.sh
 install -Dm755 /ctx/notification-indicator.sh /usr/share/tilefin/scripts/notification-indicator.sh
+install -Dm755 /ctx/auto-suspend.sh /usr/share/tilefin/scripts/auto-suspend.sh
 
 # mako (notifications) — no system path support, must use skel
 mkdir -p /etc/skel/.config/mako
