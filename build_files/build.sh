@@ -82,6 +82,8 @@ SYSTEM_UTILS=(
     greetd
     greetd-tuigreet
     gum                       # TUI menus for ujust recipes
+    gnome-keyring             # Secret Service (org.freedesktop.secrets) for gh/secret-tool (S27)
+    gnome-keyring-pam         # Activates the keyring auto-unlock lines already in /etc/pam.d/greetd
 )
 
 SYSTEM_THEMING=(
