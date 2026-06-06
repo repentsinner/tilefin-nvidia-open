@@ -265,6 +265,18 @@ mkdir -p /etc/xdg/hypr
 cp /ctx/hyprlock.conf /etc/xdg/hypr/hyprlock.conf
 cp /ctx/hypridle-niri.conf /etc/xdg/hypr/hypridle.conf
 
+# hypridle runs as a --user service (S26 R26.3) so the re-arm timer can
+# restart it. niri starts it via spawn-at-startup; not enabled here
+# because niri --session does not activate graphical-session.target.
+install -Dm644 /ctx/hypridle.service /usr/lib/systemd/user/hypridle.service
+
+# Weekday 18:00 timer re-arms hypridle at the business-hours boundary
+# (S26 R26.4). Enabled for all users; timers.target is reached by the
+# user manager independent of the graphical session.
+install -Dm644 /ctx/tilefin-hypridle-rearm.service /usr/lib/systemd/user/tilefin-hypridle-rearm.service
+install -Dm644 /ctx/tilefin-hypridle-rearm.timer /usr/lib/systemd/user/tilefin-hypridle-rearm.timer
+systemctl --global enable tilefin-hypridle-rearm.timer
+
 # waybar (status bar)
 # System-wide config via XDG fallback (/etc/xdg/waybar/)
 # Users can override by creating ~/.config/waybar/config
@@ -273,6 +285,7 @@ cp /ctx/waybar-config-niri.json /etc/xdg/waybar/config
 cp /ctx/waybar-style.css /etc/xdg/waybar/style.css
 install -Dm755 /ctx/update-check.sh /usr/share/tilefin/scripts/update-check.sh
 install -Dm755 /ctx/notification-indicator.sh /usr/share/tilefin/scripts/notification-indicator.sh
+install -Dm755 /ctx/auto-suspend.sh /usr/share/tilefin/scripts/auto-suspend.sh
 
 # mako (notifications) — no system path support, must use skel
 mkdir -p /etc/skel/.config/mako

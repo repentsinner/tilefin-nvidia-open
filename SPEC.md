@@ -875,10 +875,12 @@ configuration is needed.
 The nwg-bar power menu provides Lock, Logout, Reboot, and Shutdown but
 no suspend option. Users must run `systemctl suspend` manually.
 
-Auto-suspend via hypridle remains intentionally disabled — an
+Auto-suspend during the workday remains intentionally disabled — an
 unattended suspend during long-running builds or VM workloads is
 destructive. Manual suspend via the power menu gives the user explicit
-control.
+control at any time. S26 adds time-gated auto-suspend outside business
+hours in development mode; the manual button remains the contract for
+this section.
 
 #### Design
 
@@ -1041,7 +1043,8 @@ hourly poll. A reboot is not required.
 
 When `/etc/tilefin/production-mode` exists, the hypridle display-off
 listener (300s) and the lock listener (600s) are both skipped. The
-dim listener (240s) continues to fire as in S5.
+dim listener (240s) continues to fire as in S5. The S26 auto-suspend
+listener is also skipped — production machines never auto-suspend.
 
 The gate lives inline in each gated listener's `on-timeout`:
 `sh -c '[ ! -e /etc/tilefin/production-mode ] && <action>'`. Hypridle
@@ -1072,6 +1075,109 @@ operator latency. The assumption is that production-mode machines
 are physically attended (live broadcast, capture booth, control
 surface) where the room itself enforces access. `Mod+L` still locks
 manually; only the idle trigger is gated.
+
+### S26: Time-gated auto-suspend in development mode
+
+*Status: in progress*
+
+#### Problem
+
+A development workstation left idle overnight or over a weekend stays
+fully powered — GPU, fans, and PSU drawing wall power with no operator
+present. S22 deliberately disabled auto-suspend because an unattended
+suspend during a long build or VM run is destructive. The result is the
+opposite failure: a machine nobody is using never sleeps.
+
+S25 production mode already separates attended-production machines (live
+capture, broadcast) from development machines. Production machines must
+never sleep. Development machines should sleep when no one is working —
+but not during the workday, when an auto-suspend mid-task is the
+destructive interruption S22 guards against.
+
+#### Design
+
+In development mode (the `/etc/tilefin/production-mode` flag is absent),
+the system auto-suspends to deep S3 after 30 minutes idle, but only
+outside business hours. Business hours are Monday–Friday 08:00–18:00
+local time; 18:00:00 itself is outside the window. Manual suspend
+(nwg-bar Sleep, `Mod+Shift+L`) works at any time, in any mode (S22).
+Production mode never auto-suspends.
+
+deep S3 is the target because it is the deepest sleep state this
+hardware can wake from via USB (`/sys/power/mem_sleep` defaults to
+`deep`); a USB keyboard, mouse, or wireless receiver wakes the machine.
+Hibernate (S4) is rejected: it is not USB-wakeable (power-button only)
+and is not configured — swap is zram-only, which cannot back a
+hibernation image.
+
+Idle detection is hypridle's; the suspend decision is a guard script.
+hypridle fires each listener once per idle period, so a machine that
+went idle during business hours would not auto-suspend when 18:00
+passes — the listener already fired and will not re-fire without
+intervening activity. A re-arm timer restarts hypridle at 18:00 on
+weekdays. The restart begins a fresh idle countdown: an already-idle
+machine fires the 30-minute listener again and suspends near 18:30.
+Restarting an in-use machine's hypridle is a no-op — it re-subscribes
+to idle notifications and nothing fires until the next idle period.
+This holds regardless of `ext-idle-notify-v1` fire semantics, because
+the timeout is measured from notification-object creation.
+
+#### Why a guard script, not an inline gate
+
+R25.5 gates idle display-off and lock with an inline
+`[ ! -e /etc/tilefin/production-mode ] && <action>`. The auto-suspend
+gate adds day-of-week and hour-of-day conditions that exceed what a
+readable hypridle one-liner can carry and that warrant tests. The guard
+is a script alongside the existing waybar helper scripts, with its clock
+and flag path overridable so the decision matrix is testable without
+suspending the host.
+
+#### Why restart hypridle, not a standalone idle check
+
+The re-arm timer could instead query session idle time directly
+(`loginctl` idle hints) and suspend without hypridle. Rejected: it would
+duplicate idle tracking hypridle already owns and re-derive the same
+30-minute threshold. Restarting hypridle reuses one idle source and
+keeps the threshold defined in one place.
+
+#### R26.1: Auto-suspend guard
+
+A guard script suspends the system via `systemctl suspend` unless either
+condition holds:
+
+- `/etc/tilefin/production-mode` exists, or
+- the local time is Monday–Friday and the hour is in [08:00, 18:00).
+
+Weekday derives from `date +%u` (1–5 = Mon–Fri) and hour from
+`date +%H`. The flag path, suspend command, and current time are
+overridable via environment variables for testing.
+
+#### R26.2: Idle suspend listener
+
+hypridle includes a listener that, after 1800 seconds idle, runs the
+guard. This replaces the previously commented-out auto-suspend block.
+
+#### R26.3: hypridle runs as a user service
+
+hypridle runs as a systemd `--user` service so the re-arm mechanism can
+restart it. niri starts it from `spawn-at-startup` via
+`systemctl --user start hypridle.service` instead of spawning the bare
+binary; the service inherits `WAYLAND_DISPLAY` and `NIRI_SOCKET` from the
+user manager, which `niri --session` populates.
+
+The service is not bound to `graphical-session.target`. `niri --session`
+imports the session environment into systemd and D-Bus but does not
+activate that target, so a unit wired `WantedBy=graphical-session.target`
+would never start. The compositor spawn is the start trigger instead.
+
+#### R26.4: Weekday re-arm
+
+A systemd `--user` timer fires at 18:00 Monday–Friday, re-arming idle
+detection at the business-hours boundary. It is enabled image-wide via
+`systemctl --global enable` (the user manager reaches `timers.target`
+independent of the graphical session). The timer triggers a service that
+`try-restart`s hypridle — a no-op when hypridle is not running, so an
+absent or already-suspended session is unaffected.
 
 ## Out of scope
 
