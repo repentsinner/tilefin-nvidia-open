@@ -1218,10 +1218,15 @@ do not collide.
 Why local, not a synced vault: no synced vault (Bitwarden, Proton Pass)
 implements the Secret Service API — that role is local-only. A gh token
 is machine-scoped and revocable, so a per-machine encrypted keyring is
-the appropriate store. Retrieving user-scoped secrets from a synced
-vault on demand is a separate concern, deferred pending a placement
-decision against the S12 image boundary (a Bitwarden CLI is a user tool,
-which the boundary routes to userbox rather than the image).
+the appropriate store.
+
+Retrieving user-scoped secrets from a synced vault on demand (e.g. a
+per-repo `GH_TOKEN` pulled from Bitwarden) is a separate concern handled
+by `rbw`, delivered via userbox — not the image. Per the S12 boundary, a
+Bitwarden CLI is a user tool, and it sits alongside `gh` (also userbox).
+This image contributes only the existing plumbing: the direnv hook
+(R11.1) and `~/.local/bin` on `PATH` (R11.2), which a project's
+(gitignored) `.envrc` uses to call `rbw` and export `GH_TOKEN`.
 
 #### R27.1: Secret Service provider
 
