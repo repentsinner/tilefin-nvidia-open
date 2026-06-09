@@ -1179,6 +1179,63 @@ independent of the graphical session). The timer triggers a service that
 `try-restart`s hypridle — a no-op when hypridle is not running, so an
 absent or already-suspended session is unaffected.
 
+### S27: Encrypted credential storage (Secret Service)
+
+*Status: in progress*
+
+#### Problem
+
+The image ships no freedesktop Secret Service provider. `gh` — and any
+application using `org.freedesktop.secrets` — therefore has no encrypted
+credential store and falls back to writing its token in plaintext to
+`~/.config/gh/hosts.yml` (the fallback is documented in gh's own
+`auth login` help: "stored securely in the system credential store. If
+a credential store is not found … fallback to writing the token to a
+plain text file"). `secret-tool` is present but non-functional because
+nothing owns the bus name.
+
+#### Design
+
+The image installs gnome-keyring as the Secret Service provider,
+auto-unlocked at greetd login.
+
+The greetd PAM stack already ships the keyring hooks —
+`-auth optional pam_gnome_keyring.so` and
+`-session optional pam_gnome_keyring.so auto_start` — inert while the
+module is absent (the `-` prefix ignores a missing module). Installing
+`gnome-keyring-pam` activates them with no PAM edits: the login password
+unlocks the login keyring at session start. gnome-keyring then owns
+`org.freedesktop.secrets`, so gh's secure storage and `secret-tool`
+resolve to the encrypted keyring instead of the plaintext fallback.
+
+gnome-keyring must not take over `SSH_AUTH_SOCK`: the Bitwarden flatpak
+ssh-agent owns SSH for this user (S3 session wrapper). gnome-keyring 48
+no longer ships an ssh-agent component (split into `gcr-ssh-agent`, which
+is not installed), and `niri-session.sh` sets `SSH_AUTH_SOCK` to the
+Bitwarden socket regardless — so the secrets keyring and the SSH agent
+do not collide.
+
+Why local, not a synced vault: no synced vault (Bitwarden, Proton Pass)
+implements the Secret Service API — that role is local-only. A gh token
+is machine-scoped and revocable, so a per-machine encrypted keyring is
+the appropriate store.
+
+Retrieving user-scoped secrets from a synced vault on demand (e.g. a
+per-repo `GH_TOKEN` pulled from Bitwarden) is a separate concern handled
+by `rbw`, delivered via userbox — not the image. Per the S12 boundary, a
+Bitwarden CLI is a user tool, and it sits alongside `gh` (also userbox).
+This image contributes only the existing plumbing: the direnv hook
+(R11.1) and `~/.local/bin` on `PATH` (R11.2), which a project's
+(gitignored) `.envrc` uses to call `rbw` and export `GH_TOKEN`.
+
+#### R27.1: Secret Service provider
+
+`gnome-keyring` and `gnome-keyring-pam` are installed. The daemon
+provides `org.freedesktop.secrets`; the greetd PAM stack unlocks the
+login keyring with the login password at session start. gh secure
+storage and `secret-tool` resolve to this keyring; gh no longer writes
+its token to plaintext `hosts.yml`.
+
 ## Out of scope
 
 - **User dotfiles**: Managed by chezmoi in a separate repo. This image
