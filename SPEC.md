@@ -1236,6 +1236,60 @@ login keyring with the login password at session start. gh secure
 storage and `secret-tool` resolve to this keyring; gh no longer writes
 its token to plaintext `hosts.yml`.
 
+### S28: Rootless container enabling config for local Kubernetes
+
+*Status: not started*
+
+#### Problem
+
+Local Kubernetes development with `kind` on rootless podman, and
+`podman compose` workflows, fail out of the box. `kind` needs cgroup
+v2 controllers (`cpu`, `cpuset`, `io`, `memory`) delegated to the
+user's systemd session before it can run rootless on podman; without
+delegation, cluster nodes fail to start. `podman compose` requires a
+compose provider binary in `$PATH` and finds none.
+
+The provider and the client tools (`kubectl`, `kind`, `helm`,
+`docker-compose`) are CLI dev toolchains — by the image boundary they
+belong in userbox, not the image (see Out of scope). But the host-level
+enabling config those tools depend on cannot live in a distrobox: cgroup
+delegation and kernel sysctls are system state only the image can set.
+
+Reported in #62. The tooling half of #62 is tracked in
+[repentsinner/userbox](https://github.com/repentsinner/userbox); this
+section covers only the image-side enabling config.
+
+#### Design
+
+The image delivers the host prerequisites for rootless `kind` on podman
+and leaves the binaries to userbox:
+
+- **cgroup v2 controller delegation** to the user session, via a
+  `systemd` drop-in under `user@.service.d`, so rootless podman (and
+  `kind`'s node containers) can create sub-cgroups for `cpu`, `cpuset`,
+  `io`, and `memory`.
+- **`KIND_EXPERIMENTAL_PROVIDER=podman`** exported system-wide via
+  `/etc/environment.d/`, matching the existing electron-wayland pattern
+  (S10), so `kind` selects podman without per-user shell config.
+- **Any sysctls `kind` requires** to run rootless on podman, via
+  `/usr/lib/sysctl.d/`.
+
+The base image may already delegate cgroup controllers for rootless
+podman; if so, this section reduces to verifying and documenting that,
+plus the provider env var and any missing sysctls.
+
+#### Open questions
+
+- Does base-nvidia already ship cgroup v2 delegation for the user
+  session, or must the image add the `user@.service.d` drop-in?
+- `kind` exported from userbox runs inside the distrobox. Does it drive
+  the host podman cleanly through the exported wrapper, or does the
+  nesting force `kind` onto the host `PATH`? This determines whether the
+  userbox split is sufficient or the image must also carry the binary.
+
+Requirements to be specified after resolving cgroup delegation state on
+base-nvidia and the kind-in-distrobox-vs-host question via `/plan`.
+
 ## Out of scope
 
 - **User dotfiles**: Managed by chezmoi in a separate repo. This image
@@ -1248,3 +1302,7 @@ its token to plaintext `hosts.yml`.
   rendering (S24); Flutter itself runs in the userbox.
 - **Flatpak apps beyond Bitwarden**: User-installed via
   `flatpak install --user`.
+- **Kubernetes/compose client tools**: `kubectl`, `kind`, `helm`, and
+  the `docker-compose` provider are CLI dev toolchains and live in
+  repentsinner/userbox, not the image. The image-side enabling config
+  for rootless `kind` on podman is in scope (S28).

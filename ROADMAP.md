@@ -67,6 +67,29 @@ Completed work is removed — see CHANGELOG.md for history.
   Blocked — requirements not yet specified. Unblocked when S13 spec
   is written.
 
+## Rootless container enabling config (S28)
+
+- **cgroup-delegation-probe**: Determine whether base-nvidia already
+  delegates cgroup v2 controllers (`cpu`, `cpuset`, `io`, `memory`) to
+  the user session. On a running image, check
+  `cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/.../cgroup.controllers`
+  and `systemctl cat user@.service`. If delegation is absent, add a
+  `user@.service.d` drop-in. This gates the rest of S28.
+  Files: `build_files/build.sh` (and a drop-in conf if needed).
+
+- **kind-podman-enabling**: Export `KIND_EXPERIMENTAL_PROVIDER=podman`
+  system-wide via `/etc/environment.d/` (electron-wayland pattern, S10)
+  and add any sysctls `kind` needs for rootless podman under
+  `/usr/lib/sysctl.d/`. Depends on **cgroup-delegation-probe**.
+  Files: `build_files/build.sh`, new `kind-provider.conf`,
+  new sysctl `.conf`.
+
+  **Verify:** With the K8s tools installed from userbox, `kind create
+  cluster` succeeds rootless on podman and `kubectl get nodes` reports
+  Ready. `podman compose up` resolves the docker-compose provider from
+  `~/.local/bin`. Confirm `printenv KIND_EXPERIMENTAL_PROVIDER` reads
+  `podman` in a fresh shell.
+
 ## Time-gated auto-suspend (S26)
 
 - **auto-suspend-core**: Add the guard script that suspends via
