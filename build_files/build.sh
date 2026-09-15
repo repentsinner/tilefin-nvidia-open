@@ -437,7 +437,7 @@ EOF
 mkdir -p /etc/security/limits.d
 cat > /etc/security/limits.d/99-memlock.conf <<'EOF'
 # Unlimited memlock for wheel group — required for GPU pinned memory
-# and RDMA verb registration (DeckLink capture, future Rivermax)
+# and RDMA verb registration (DeckLink capture, ST2110 on the ConnectX-6)
 @wheel  -  memlock  unlimited
 EOF
 

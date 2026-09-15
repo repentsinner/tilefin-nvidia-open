@@ -3,48 +3,7 @@
 Planned work derived from SPEC.md. Sections in build-dependency order.
 Completed work is removed — see CHANGELOG.md for history.
 
-## Dynamic GPU detection §road:gpu-detection
-
-### Detect the Nvidia display in the session wrapper §road:niri-gpu-detect
-
-Move Nvidia env vars from `niri-config.kdl` to `niri-session.sh` behind
-a DRM connector detection check. Remove `WLR_NO_HARDWARE_CURSORS`.
-Files: `build_files/niri-config.kdl`, `build_files/niri-session.sh`.
-§spec:gpu-detection
-
-## Rivermax ST2110 streaming §road:rivermax
-
-### Probe DOCA-RoCE against Fedora kernel-devel §road:doca-roce-fedora-probe
-
-Throwaway Containerfile build stage that attempts to install
-`doca-roce` from the Mellanox yum repo against Fedora 42's
-kernel-devel. Determines whether DOCA kernel modules compile on kernel
-6.19+ with Fedora's glibc. Check `rpm -ql` output for
-`nvidia-peermem.ko` and `mlx5_core.ko` to assess coexistence with ublue
-`kmod-nvidia`. This gates all subsequent §spec:rivermax work.
-
-## Manual system suspend §road:manual-suspend
-
-### Sleep button in the power menu §road:nwg-bar-sleep-button
-
-Add Sleep button to nwg-bar power menu. Runs `systemctl suspend`. Icon:
-`system-suspend.svg` (ships with nwg-bar).
-Files: `build_files/nwg-bar.json`.
-§spec:nwg-bar-sleep
-
 ## Dual-channel image publishing §road:image-channels
-
-### Fix the build_push skip cascade §road:build-needs-fix
-
-Fix `build_push` skip cascade on non-PR events. The `changes` job is
-PR-only; `build_push` declares `needs: [changes]` which causes it to
-skip on tag pushes, schedule, and workflow_dispatch. Add
-`if: always()` to `build_push` and adjust the existing `if` condition to
-handle the skipped `changes` output.
-Files: `.github/workflows/build.yml`.
-§spec:build-push-all-events
-
-**Verify:** A `workflow_dispatch` or tag push runs `build_push`.
 
 ### Semver provenance in image tags §road:build-channel-tags
 
@@ -52,8 +11,7 @@ Add a workflow step that reads `version.txt` into a step output. Update
 `docker/metadata-action` tags: replace `latest.YYYYMMDD` and bare
 `YYYYMMDD` with `latest.v<version>.<YYYYMMDD>`. Add `stable` and
 `<version>` tags for `v*` tag builds. Remove `<major>.<minor>` tag. Set
-`org.opencontainers.image.version` label to semver. Depends on
-§road:build-needs-fix.
+`org.opencontainers.image.version` label to semver.
 Files: `.github/workflows/build.yml`.
 §spec:daily-tag-provenance §spec:oci-version-label
 
@@ -65,14 +23,16 @@ Widen the push-to-GHCR and cosign-signing `if` conditions to allow
 Files: `.github/workflows/build.yml`.
 §spec:tag-builds-stable-channel
 
+**Verify:** A `v*` tag push publishes `stable` and `<version>` to GHCR,
+signed.
+
 ## EGL-Wayland platform plugin §road:egl-wayland
 
 ### Ship egl-wayland in the image §road:egl-wayland-package
 
 Add `egl-wayland` to the `WAYLAND_CORE` package group in
 `build_files/build.sh` so NVIDIA's EGL can handle
-`EGL_PLATFORM_WAYLAND` display requests. No dependencies, but does not
-reach users until §road:image-channels republishes images.
+`EGL_PLATFORM_WAYLAND` display requests. No dependencies.
 Files: `build_files/build.sh`.
 §spec:egl-wayland-installed
 
@@ -89,52 +49,6 @@ required system integrations (udev, KMS, NVENC). Write spec
 requirements in §spec:sunshine before implementation. Blocked —
 requirements not yet specified. Unblocked when the §spec:sunshine
 requirements are written.
-
-## Time-gated auto-suspend §road:auto-suspend
-
-### Guard script and idle listener §road:auto-suspend-core
-
-Add the guard script that suspends via `systemctl suspend` unless
-production-mode or business hours (Mon–Fri 08:00–18:00), with
-clock/flag/suspend-cmd overridable for tests (§spec:auto-suspend-guard);
-add a decision-matrix test covering the production, weekday, weekend,
-and boundary cases; wire a 1800s hypridle listener to the guard,
-replacing the commented-out auto-suspend block
-(§spec:idle-suspend-listener).
-Files: `build_files/auto-suspend.sh`, `test/auto-suspend.test.sh`,
-`build_files/hypridle-niri.conf`, `build_files/build.sh`.
-
-### hypridle as a systemd user service §road:hypridle-user-service
-
-Run hypridle as a systemd `--user` service, started by niri
-`spawn-at-startup "systemctl" "--user" "start" "hypridle.service"` (not
-bound to `graphical-session.target`, which `niri --session` does not
-activate), so the daemon is restartable
-(§spec:hypridle-user-service).
-Files: `build_files/hypridle.service`, `build_files/niri-config.kdl`,
-`build_files/build.sh`.
-
-**Verify:** Idle dim, lock, and display-off still fire after the
-conversion.
-
-### Weekday re-arm timer §road:hypridle-rearm-timer
-
-Add a systemd `--user` timer (`OnCalendar=Mon-Fri 18:00`) and a
-timer-triggered service that `try-restart`s hypridle to re-arm idle
-detection at the business-hours boundary, enabling the timer image-wide
-via `systemctl --global enable` (§spec:weekday-rearm). Depends on
-§road:hypridle-user-service.
-Files: `build_files/tilefin-hypridle-rearm.timer`,
-`build_files/tilefin-hypridle-rearm.service`, `build_files/build.sh`.
-
-**Verify:** Run `test/auto-suspend.test.sh` — all decision-matrix cases
-pass. On the running image in development mode (no
-`/etc/tilefin/production-mode`): `systemctl --user is-active hypridle`
-reports active under the niri session; `systemctl --user list-timers`
-shows `tilefin-hypridle-rearm` scheduled for the next Mon–Fri 18:00;
-idle dim/lock/display-off still fire; nwg-bar Sleep and `Mod+Shift+L`
-suspend on demand at any time. Enable production mode and confirm the
-idle listener no longer suspends.
 
 ## Cross-release bootc switch §road:cross-release-switch
 
@@ -177,8 +91,9 @@ on 2026-08-31 rather than maintained against a workload it cannot serve.
 Blocked — no such workload yet. The build recipe (one driver header,
 symbol CRCs from the shipped `nvidia.ko`, `kernel-devel` from
 `updates-archive`) and the three standing costs are recorded under
-§spec:gpudirect-storage. Likely coupled to the DOCA-on-Fedora blocker
-that gates §spec:rivermax; verify that before planning around it.
+§spec:gpudirect-storage. The `nvfs` path may also want DOCA's NVMe
+patches, and DOCA does not target Fedora; verify that before planning
+around it.
 
 ## Rootless container enabling config §road:rootless-k8s-enabling
 

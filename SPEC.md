@@ -603,7 +603,7 @@ packaging and Niri/Wayland compatibility.*
 
 ## VS Code §spec:vscode
 
-*Status: in progress*
+*Status: complete*
 
 The image installs VS Code from Microsoft's yum repository. The build
 adds the repo and installs the `code` package directly.
@@ -614,7 +614,7 @@ does not belong in the userbox.
 
 ## Tailscale mesh VPN §spec:tailscale
 
-*Status: in progress*
+*Status: complete*
 
 ### Problem
 
@@ -666,87 +666,41 @@ login-ready state on first boot without a manual `systemctl enable`.
 
 ## Dynamic GPU detection for hybrid Intel+Nvidia systems §spec:gpu-detection
 
-*Status: in progress*
+*Status: complete*
 
-### Problem
+Where an Intel iGPU drives the display and the Nvidia GPU is reserved
+for CUDA or PCI passthrough (§spec:virtualization), Nvidia rendering
+variables (`GBM_BACKEND`, `__GLX_VENDOR_LIBRARY_NAME`,
+`LIBVA_DRIVER_NAME`) point niri at a GPU with no outputs. niri then
+fails to start or renders incorrectly.
 
-The niri config hardcodes Nvidia-specific environment variables
-(`GBM_BACKEND`, `__GLX_VENDOR_LIBRARY_NAME`, `LIBVA_DRIVER_NAME`).
-These force the compositor to render through Nvidia. On systems where
-an Intel iGPU drives the display and the Nvidia GPU is reserved for
-CUDA or PCI passthrough, these variables prevent niri from starting or
-cause broken rendering.
+`niri-session.sh` exports those variables only when a DRM connector on
+an Nvidia-driven card reports a connected display. Otherwise they stay
+unset and Mesa selects Intel. `config.kdl` carries only
+hardware-independent variables (`XDG_SESSION_TYPE`, `XCURSOR_SIZE`,
+`ELECTRON_OZONE_PLATFORM_HINT`).
 
-Additionally, `WLR_NO_HARDWARE_CURSORS` is a wlroots variable. Niri
-uses Smithay and ignores it. The equivalent niri setting is
+`WLR_NO_HARDWARE_CURSORS` is gone. It is a wlroots variable, and niri,
+built on Smithay, ignores it; niri's equivalent is
 `debug { disable-cursor-plane }`.
-
-### Design
-
-Nvidia environment variables move from the static niri config
-(`config.kdl`) to the session wrapper (`niri-session.sh`). The wrapper
-detects whether an Nvidia GPU drives a display output and sets the
-variables conditionally.
-
-Detection: if any DRM connector under an Nvidia-driven card reports a
-connected display, the system is Nvidia-as-display. Otherwise (Intel
-iGPU drives display, Nvidia has no outputs or is unbound), the
-variables stay unset and mesa auto-detects Intel.
-
-The niri config retains only hardware-independent environment variables
-(`XDG_SESSION_TYPE`, `XCURSOR_SIZE`, `ELECTRON_OZONE_PLATFORM_HINT`).
-
-### No Nvidia environment variables in niri config §spec:niri-config-no-nvidia-vars
-
-`config.kdl` shall not set `GBM_BACKEND`, `__GLX_VENDOR_LIBRARY_NAME`,
-`LIBVA_DRIVER_NAME`, or `WLR_NO_HARDWARE_CURSORS`.
-
-### Session wrapper sets Nvidia variables conditionally §spec:session-wrapper-nvidia-vars
-
-`niri-session.sh` shall detect whether Nvidia drives a display output.
-When true, it exports `GBM_BACKEND=nvidia-drm`,
-`__GLX_VENDOR_LIBRARY_NAME=nvidia`, and `LIBVA_DRIVER_NAME=nvidia`.
-When false, it leaves them unset.
-
-### WLR_NO_HARDWARE_CURSORS removed §spec:hardware-cursors-restored
-
-The wlroots variable `WLR_NO_HARDWARE_CURSORS` is removed entirely. It
-has no effect on niri (Smithay-based).
 
 ## Rebase from Bluefin-DX to base-nvidia §spec:base-image-rebase
 
-*Status: in progress*
+*Status: complete*
 
-### Problem
+The image once built on Bluefin-DX (`bluefin-dx-nvidia-open:gts`). It
+pulled in four layers of upstream packages, then stripped most of them:
+GNOME Shell, GDM, Homebrew, and every GNOME extension. Packages the build
+never referenced — Docker, Cockpit, ROCm, Incus/LXC, Samba/AD/Kerberos,
+backup tools — added size and attack surface for no benefit.
 
-The image based on Bluefin-DX (`bluefin-dx-nvidia-open:gts`) pulled in
-four layers of upstream packages (ublue-os/main → Bluefin base →
-Bluefin-DX) then immediately stripped most of them: GNOME Shell, GDM,
-Homebrew, and all GNOME extensions. Packages never referenced by the
-build — Docker, Cockpit, ROCm, Incus/LXC, Samba/AD/Kerberos, backup
-tools — added image size and attack surface for no benefit.
-
-### Design
-
-The image rebases onto `ghcr.io/ublue-os/base-nvidia`, the lowest
-Universal Blue layer that includes Nvidia drivers. It ships no desktop
-environment, no display manager, and no application-layer packages.
-§spec:base-image records which tag the image tracks.
-
-Changes from the previous base:
-
-- The GNOME and Homebrew removal steps become no-ops — base-nvidia
-  ships neither.
-- VS Code (§spec:vscode) is installed directly from Microsoft's yum
-  repo.
-- `nvidia-container-toolkit` is no longer installed by the build — the
-  base image provides it.
-- `xdg-desktop-portal-gtk` is no longer installed by the build — the
-  base image provides it.
-- `tailscaled.service` is no longer enabled. Trayscale Flatpak and its
-  `/run/tailscale` override are removed.
-- `fish` is added to the package install (previously inherited from
-  Bluefin base).
+The image now builds on `ghcr.io/ublue-os/base-nvidia`, the lowest
+Universal Blue layer that carries the Nvidia drivers. It ships no desktop
+environment, display manager, or application packages. §spec:base-image
+records the tracked tag. The build installs what Bluefin-DX supplied and
+this image still needs: VS Code (§spec:vscode), Tailscale
+(§spec:tailscale), and `fish`. `nvidia-container-toolkit` and
+`xdg-desktop-portal-gtk` come from the base image.
 
 ## Automated releases §spec:releases
 
@@ -885,7 +839,7 @@ declares.
 
 ## Dual-channel image publishing §spec:image-channels
 
-*Status: not started*
+*Status: in progress*
 
 ### Problem
 
@@ -909,23 +863,17 @@ independent bugs:
    `refs/tags/v*`. Even if `build_push` ran on a tag push, it would
    build the image but not publish it.
 
-Bug #1 was introduced in PR #36 (`772e10b`, merged 2026-03-31
-after the daily cron). Since then, **no image has been published** —
-push-to-main, scheduled cron, and tag push events all skip
-`build_push`. The last published image is `latest.20260331`, built
-from commit `647a599` by the March 31 scheduled cron before PR #36
-merged. This image predates both the BMD justfile (PR #37) and the
-AJA removal (PR #35).
+Bug #1 was introduced in PR #36 (`772e10b`, merged 2026-03-31) and
+stopped every image from publishing until PR #38 fixed it
+(§spec:build-push-all-events). Bug #2 remains.
 
-The result is four user-facing problems:
+Three user-facing problems remain:
 
-1. **Image publishing is completely broken.** No new images have
-   reached GHCR since the `changes` job was added.
-2. Semver-tagged images never reach GHCR. There is no `stable`
+1. Semver-tagged images never reach GHCR. There is no `stable`
    channel and no way to pin to a known release.
-3. There is no distinction between "upstream base image rebuilt" and
+2. There is no distinction between "upstream base image rebuilt" and
    "we shipped a change." A user on `latest` receives both.
-4. Daily tags (`latest.20260318`) carry no indication of which
+3. Daily tags (`latest.20260318`) carry no indication of which
    release they derive from. A user cannot tell whether
    `latest.20260318` contains changes from `0.4.4` or `0.4.3`.
 
@@ -1012,7 +960,7 @@ The `org.opencontainers.image.version` label is set to the value of
 
 ## Install media §spec:install-media
 
-*Status: in progress*
+*Status: complete*
 
 ### Problem
 
@@ -1224,7 +1172,7 @@ advertise a 64-bit DMA mask. A device needing SWIOTLB bounce buffering for
 addresses above 4 GB is out of scope.
 
 This closes the constraint rather than carrying it forward. The DeckLink
-8K Pro G2 meets it, as does the ConnectX-6 (§spec:rivermax). No part of
+8K Pro G2 meets it, as does the ConnectX-6 (§spec:st2110). No part of
 the image works around a restricted DMA mask, and none shall be added:
 the AJA history above is the cost of the alternative — a driver fork, a
 kernel-arg workaround, and a silent failure mode with no diagnostic.
@@ -1258,133 +1206,45 @@ The recipe lives in `build_files/bmd.just`, installed as
 The DeckLink's 64-bit DMA mask imposes no IOMMU constraints.
 `iommu=pt` is safe with this card.
 
-## Rivermax ST2110 streaming §spec:rivermax
+## ST2110 streaming §spec:st2110
 
-*Status: not started*
+*Status: complete*
 
-### Problem
+The ConnectX-6 carries SMPTE ST 2110 media on the kernel's inbox
+`mlx5_core` driver. The image adds nothing for it beyond PTP
+(§spec:ptp). It carries no DOCA, no Rivermax, and no rebuilt
+`nvidia-peermem`.
 
-The machine has a Mellanox ConnectX-6 NIC capable of hardware-
-accelerated SMPTE ST 2110 media transport via NVIDIA Rivermax. Rivermax
-GPUDirect RDMA allows zero-copy packet I/O between the ConnectX NIC and
-GPU memory over Ethernet.
+### Rejected: Rivermax on DOCA-Host
 
-### Rivermax SDK requirements (v1.81.21)
+This section once planned NVIDIA Rivermax for accelerated ST 2110
+transport with GPUDirect RDMA. ST 2110 working on the inbox driver
+retired the plan. Its costs are recorded so they are not re-derived:
 
-Rivermax hard-requires DOCA-Host (v2.10.0-0.5.3) on the host. Three
-DOCA profiles are compatible:
+- **DOCA replaces the inbox driver.** Rivermax (v1.81.21) hard-requires
+  DOCA-Host, whose kernel drivers supplant inbox `mlx5_core`. DOCA and
+  the Rivermax SDK target RHEL and Ubuntu. Fedora is unsupported, and
+  whether DOCA's kernel packages build against Fedora's kernel was never
+  established.
+- **GPUDirect needed a rebuilt module.** Rivermax registers GPU memory
+  through `nvidia-peermem` and `ibv_reg_mr()`. ublue's `kmod-nvidia`
+  builds `nvidia-peermem` as a stub that returns `-EINVAL` on load,
+  because its build environment lacks DOCA-OFED headers. The image would
+  have rebuilt and overlaid the module on every kernel bump.
 
-| Profile | Scope |
-| --- | --- |
-| `doca-roce` | Minimal Ethernet/RoCE kernel drivers (replaces `MLNX_EN`) |
-| `doca-ofed` | DOCA-OFED drivers and tools (replaces `MLNX_OFED`) |
-| `doca-all` | Full DOCA-Host libraries |
+### GPU-direct packet I/O
 
-The Rivermax SDK ships pre-built for RHEL 9.2 and Ubuntu 24.04.
-Fedora is not a supported target. The SDK is a vendored tarball
-containing shared libraries, demo applications (`media_sender`,
-`media_receiver`, `generic_sender`, `generic_receiver`), a dev kit,
-and CMake components. It requires a license file at
-`/opt/mellanox/rivermax/rivermax.lic` (or via
-`RIVERMAX_LICENSE_PATH`).
-
-### GPUDirect in Rivermax
-
-Rivermax GPUDirect uses CUDA to allocate GPU memory (which resides in
-PCIe BAR1), then passes pointers to the Rivermax API. The NIC
-reads/writes GPU memory directly. The v1.81.21 docs reference "CUDA
-Toolkit Documentation -> GPUDirect RDMA" for setup — which is the
-`nvidia-peermem` + IB verbs path (`ibv_reg_mr()`).
-
-**Rivermax v1.81.21 does not support kernel DMA-BUF
-(`ibv_reg_dmabuf_mr`).** Neither the installation guide nor the user
-manual mentions DMA-BUF. The NVIDIA GPU Operator docs recommend
-DMA-BUF for GPUDirect RDMA generally, but Rivermax has not adopted
-it as of this version.
-
-### GPU memory registration: background
-
-Linux offers two mechanisms for an RDMA NIC to access GPU memory:
-
-| | nvidia-peermem (legacy) | DMA-BUF (standard) |
-| --- | --- | --- |
-| Verbs call | `ibv_reg_mr()` on GPU pointer | `ibv_reg_dmabuf_mr()` on dma-buf fd |
-| Kernel mechanism | Proprietary NVIDIA peer memory API registered into IB verbs | Standard Linux `dma-buf` fd sharing (kernel 5.12+) |
-| NIC driver requirement | MLNX_OFED or DOCA-OFED | Inbox `rdma-core` sufficient |
-| GPU requirement | Any data center GPU | Turing+ with open kernel modules |
-| NVIDIA recommendation | Legacy | **Recommended** |
-
-DMA-BUF would avoid the DOCA-OFED dependency entirely — the image
-already meets its kernel/driver prerequisites (kernel 6.19, open
-NVIDIA driver 595.45.04, Turing+ GPU, inbox `rdma-core`). But since
-Rivermax does not use it, this path is blocked on NVIDIA updating
-the SDK.
-
-The ublue `kmod-nvidia` build compiles `nvidia-peermem` as a non-
-functional stub (`NV_MLNX_IB_PEER_MEM_SYMBOLS_PRESENT` undefined)
-because the build environment lacks DOCA-OFED headers. This stub
-returns `-EINVAL` on load.
-
-### Design
-
-Rivermax userspace runs in a container. The host provides kernel
-drivers and `nvidia-peermem`.
-
-```text
-Host (tilefin-nvidia-open):
-  ├─ doca-roce or doca-ofed kernel drivers (replaces inbox mlx5)
-  ├─ nvidia-peermem.ko (rebuilt with DOCA-OFED headers)
-  └─ nvidia.ko, nvidia-uvm.ko (from ublue kmod-nvidia, unchanged)
-
-Container (Rivermax workload):
-  ├─ Rivermax SDK + libs (from vendored tarball)
-  ├─ CUDA toolkit
-  ├─ demo apps (media_sender, media_receiver, etc.)
-  └─ rivermax.lic bind-mounted from host
-```
-
-Host-side changes required:
-
-1. **Replace inbox Mellanox kernel driver with DOCA-OFED.** The inbox
-   `mlx5_core` from Fedora's kernel shall be replaced (or overlaid)
-   with DOCA's version. At minimum `doca-roce` profile. DOCA packages
-   are published for RHEL — Fedora compatibility is unverified.
-2. **Rebuild `nvidia-peermem.ko`** with DOCA-OFED headers present so
-   `NV_MLNX_IB_PEER_MEM_SYMBOLS_PRESENT` is defined. This can follow
-   the same Containerfile build-stage pattern as kmod-nvidia: compile
-   from NVIDIA open-gpu-kernel-modules source, overlay the `.ko` on
-   top of the stub from `kmod-nvidia`.
-3. **`modules-load.d` entry for `nvidia-peermem`** once the module is
-   functional.
-
-A related project
-([Fuse-Technical-Group/bluefin-gdx-doca](https://github.com/Fuse-Technical-Group/bluefin-gdx-doca))
-has explored the full DOCA stack on CentOS Stream 10 (bluefin-gdx:lts
-base). That project installs `doca-all`, `doca-roce`, `rivermax`, and
-`rivermax-utils` directly into the image via the Mellanox yum repo.
-
-### Open questions
-
-- Can DOCA-OFED kernel packages (built for RHEL) install on Fedora
-  42's kernel, or does Fedora's kernel ABI diverge too far?
-- Is `doca-roce` sufficient, or does Rivermax GPUDirect require
-  `doca-ofed`?
-- Can the DOCA kernel drivers coexist with ublue's `kmod-nvidia`, or
-  do they conflict on `nvidia-peermem`?
-- Resizable BAR (per-machine BIOS setting) controls how much GPU
-  memory the NIC can access for GPUDirect. Without it, BAR1 is
-  256 MB regardless of GPU VRAM. This limits the total GPU memory
-  registerable with the NIC at once — constraining the number of
-  concurrent streams, not per-stream throughput. For low-latency
-  broadcast use cases with shallow ring buffers, 256 MB is likely
-  sufficient for a small number of streams.
-
-Requirements to be specified after resolving DOCA-OFED packaging on
-Fedora bootc.
+If a workload needs the NIC to read and write GPU memory directly,
+DMA-BUF (`ibv_reg_dmabuf_mr()`) is the path. It shares GPU memory
+through the kernel's standard `dma-buf` mechanism, works with upstream
+`rdma-core`, and needs no `nvidia-peermem`. Its prerequisites are open
+NVIDIA kernel modules on a Turing or newer GPU and kernel 5.12 or later,
+which the image meets. Rivermax v1.81.21 did not support DMA-BUF, which
+is why the rejected plan needed DOCA.
 
 ## PTP time sync §spec:ptp
 
-*Status: in progress*
+*Status: complete*
 
 ### Problem
 
@@ -1392,9 +1252,8 @@ ST2110 senders and receivers derive their media clock from a PTP
 grandmaster (SMPTE 2059-2). Without `ptp4l` disciplining the NIC's
 hardware clock and `phc2sys` carrying that time to the system clock, an
 ST2110 stream has no common timebase and receivers cannot align
-essences. This gates §spec:rivermax, and is equally needed for
-packet-capture timestamping and for talking to third-party ST2110
-hardware before any Rivermax work starts.
+essences. §spec:st2110 depends on it, as do packet-capture timestamping
+and interoperation with third-party ST2110 hardware.
 
 `linuxptp` was reaching machines as an `rpm-ostree` layered package,
 which carries the same upgrade fragility described in §spec:tailscale.
@@ -1537,34 +1396,20 @@ storage and no host-side change reaches it.
 
 ## Manual system suspend §spec:manual-suspend
 
-*Status: in progress*
+*Status: complete*
 
-### Problem
+The nwg-bar power menu carries a Sleep button between Lock and Logout
+that runs `systemctl suspend`, and `Mod+Shift+L` does the same. Manual
+suspend works at any time, in any mode.
 
-The nwg-bar power menu provides Lock, Logout, Reboot, and Shutdown but
-no suspend option. Users run `systemctl suspend` manually instead.
-
-Auto-suspend during the workday remains intentionally disabled — an
-unattended suspend during long-running builds or VM workloads is
-destructive. Manual suspend via the power menu gives the user explicit
-control at any time. §spec:auto-suspend adds time-gated auto-suspend
-outside business hours in development mode; the manual button remains
-the contract for this section.
-
-### Design
-
-nwg-bar gains a Sleep button between Lock and Logout. The button runs
-`systemctl suspend`. The icon (`system-suspend.svg`) ships with the
-nwg-bar package.
-
-### Sleep button in nwg-bar §spec:nwg-bar-sleep
-
-The nwg-bar config (`bar.json`) includes a Sleep entry that runs
-`systemctl suspend`, positioned between Lock and Logout.
+Auto-suspend during the workday stays disabled. An unattended suspend
+during a long build or VM run is destructive, so the button is how the
+user suspends on demand. §spec:auto-suspend adds time-gated auto-suspend
+outside business hours in development mode.
 
 ## EGL-Wayland platform plugin §spec:egl-wayland
 
-*Status: in progress*
+*Status: not started*
 
 ### Problem
 
@@ -1596,7 +1441,7 @@ registration at
 
 ## Production mode §spec:production-mode
 
-*Status: in progress*
+*Status: complete*
 
 ### Problem
 
@@ -1612,9 +1457,8 @@ comes back the way I left it." Auto-staging inverts that: every reboot
 is a potential image transition, with kernel modules, NVIDIA driver, and
 capture-card kmod versions changing under the user's feet. The staged
 image is unvalidated against the workload — a regression in
-`kmod-nvidia`, the DeckLink out-of-tree driver, or peermem header coupling
-(§spec:decklink-capture, §spec:rivermax) only surfaces post-reboot,
-often mid-show.
+`kmod-nvidia` or the DeckLink out-of-tree driver (§spec:decklink-capture)
+only surfaces post-reboot, often mid-show.
 
 The destructive action is not the reboot — it is staging an unvetted
 image *before* a reboot that the user expects to be non-destructive.
@@ -1750,7 +1594,7 @@ manually; only the idle trigger is gated.
 
 ## Time-gated auto-suspend in development mode §spec:auto-suspend
 
-*Status: in progress*
+*Status: complete*
 
 ### Problem
 
@@ -1854,7 +1698,7 @@ absent or already-suspended session is unaffected.
 
 ## Hot-development mode §spec:hot-development
 
-*Status: in progress*
+*Status: complete*
 
 ### Problem
 
@@ -1932,7 +1776,7 @@ the module reads `production` (§spec:waybar-production-indicator).
 
 ## Encrypted credential storage (Secret Service) §spec:credential-storage
 
-*Status: in progress*
+*Status: complete*
 
 ### Problem
 
@@ -2001,8 +1845,9 @@ buffer through host RAM. GDS does not work on the image as shipped:
 
 The image carries five NVIDIA modules from ublue's `kmod-nvidia`:
 `nvidia`, `nvidia-drm`, `nvidia-modeset`, `nvidia-uvm`, and
-`nvidia-peermem`. The last is GPUDirect RDMA for the network path
-(§spec:rivermax), not storage. There is no `nvidia-fs`.
+`nvidia-peermem`. The last is GPUDirect RDMA for the network path, not
+storage, and ships as a non-functional stub (§spec:st2110). There is no
+`nvidia-fs`.
 
 ### Backed out
 
@@ -2117,9 +1962,8 @@ shipped `nvidia.ko`, and `kernel-devel` from Fedora's `updates-archive`
 — but:
 
 - The `nvfs` path wants NVMe driver patches from DOCA's
-  `mlnx-nvme-dkms`. DOCA on Fedora is the same blocker that stalls
-  §spec:rivermax, so the module alone may not deliver a working DMA
-  path.
+  `mlnx-nvme-dkms`. DOCA does not target Fedora (§spec:st2110), so the
+  module alone may not deliver a working DMA path.
 - It commits the image to rebuilding an out-of-tree module against every
   kernel bump, pinned to an nvidia-fs release that supports that kernel.
 - The result is unsigned. ublue signs its akmods with a key this repo
@@ -2141,10 +1985,9 @@ or NFS over RDMA — therefore still needs the `nvfs` path and
 configuration of what §spec:gpudirect-storage does deliver reaches it.
 When such a workload arrives this section reopens with the three costs
 above intact, plus probably a fourth: RDMA-backed distributed clients
-are likely to want the same DOCA/MOFED stack that blocks §spec:rivermax,
-which would couple the two. That coupling is inferred from the shared
-DOCA dependency rather than verified, and should be checked before it is
-planned around.
+are likely to want the DOCA/MOFED stack, which does not target Fedora
+(§spec:st2110). That dependency is inferred rather than verified, and
+should be checked before it is planned around.
 
 ### Static BAR1 for PCI P2PDMA §spec:static-bar1-p2pdma
 
@@ -2165,8 +2008,8 @@ The value is `2` (AUTO), not `1` (ENABLE). Per `nvrm_registry.h`, AUTO
 enough to map all of FB once plus a calculated amount for other expected
 BAR1 mappings", whereas ENABLE "does not take into account other
 expected BAR1 mappings and may lead to BAR1 exhaustion later". Those
-other mappings are GPUDirect RDMA's (§spec:rivermax), which this image
-intends to keep working.
+other mappings are GPUDirect RDMA's, which the static-BAR1 configuration
+had to leave room for.
 
 Static BAR1 does not conflict with resizable BAR; it requires a BAR1
 large enough to map the whole framebuffer. What supplies that size is
@@ -2246,7 +2089,7 @@ The cost of removal is likewise unmeasured. Translated DMA applies to the
 ConnectX-6 and the DeckLink, and this repository has no before-and-after
 figures for either. Restoring `iommu=pt` is a one-line change to
 `10-iommu.toml` and is the correct response to a measured regression in
-§spec:rivermax or §spec:decklink-capture throughput — not to a suspicion
+§spec:st2110 or §spec:decklink-capture throughput — not to a suspicion
 of one.
 
 A local karg outranks the image in both directions, which this arg
@@ -2405,8 +2248,8 @@ support with p2pdma, and not slot changes.
 - **Same-root-complex co-location.** Not worth pursuing. `0000:40` has
   exactly two root ports wired to slots — the GPU and the ConnectX-6 —
   with `07.1`/`08.1` leading to AMD internal functions, so co-locating
-  an NVMe means displacing the NIC and the GPUDirect RDMA co-location
-  §spec:rivermax wants. It would not change the mapping class either:
+  an NVMe means displacing the ConnectX-6 (§spec:st2110) from the GPU's
+  host bridge. It would not change the mapping class either:
   `PCI_P2PDMA_MAP_BUS_ADDR` needs a common upstream bridge, i.e. a PCIe
   switch, and separate root ports under one host bridge still yield
   `THRU_HOST_BRIDGE`. Bifurcation creates root ports, not a switch.
@@ -2508,12 +2351,10 @@ running without SELinux.
 
 ### Problem
 
-Local Kubernetes development with `kind` on rootless podman, and
-`podman compose` workflows, fail out of the box. `kind` needs cgroup
-v2 controllers (`cpu`, `cpuset`, `io`, `memory`) delegated to the
-user's systemd session before it can run rootless on podman; without
-delegation, cluster nodes fail to start. `podman compose` requires a
-compose provider binary in `$PATH` and finds none.
+Local Kubernetes development with `kind` on rootless podman fails out
+of the box. `kind` needs cgroup v2 controllers (`cpu`, `cpuset`, `io`,
+`memory`) delegated to the user's systemd session before it can run
+rootless on podman; without delegation, cluster nodes fail to start.
 
 A second limit bites before `kind` is even installed. The kernel caps
 inotify instances per user at 128 by default. Every `conmon` — one per
@@ -2523,12 +2364,10 @@ reached under an ordinary development session: podman logs
 `conmon: Failed to create inotify fd` and starts containers whose
 monitor cannot watch their exit.
 
-The provider and the client tools (`kubectl`, `kind`, `helm`,
-`docker-compose`) are CLI dev toolchains — by the image boundary they
-belong in userbox, not the image (§spec:image-boundary). But the
-host-level enabling config those tools depend on cannot live in a
-distrobox: cgroup delegation and kernel sysctls are system state only
-the image can set.
+The image ships the compose provider (§spec:compose-provider), and
+`setup-user` installs the Kubernetes clients (§spec:k8s-clients). The
+host-level enabling config those tools depend on is separate: cgroup
+delegation and kernel sysctls are system state only the image can set.
 
 Reported in #62. The tooling half of #62 is tracked in
 [repentsinner/userbox](https://github.com/repentsinner/userbox); this
@@ -2584,7 +2423,7 @@ them with system memory well above the 524288 `kind` asks for.
 
 ## Crash capture §spec:crash-capture
 
-*Status: in progress*
+*Status: complete*
 
 ### Problem
 
@@ -2682,7 +2521,7 @@ the next boot.
   rendering (§spec:egl-wayland); Flutter itself runs in the userbox.
 - **Flatpak apps beyond Bitwarden**: User-installed via
   `flatpak install --user`.
-- **Kubernetes/compose client tools**: `kubectl`, `kind`, `helm`, and
-  the `docker-compose` provider are CLI dev toolchains and live in
-  repentsinner/userbox, not the image. The image-side enabling config
-  for rootless `kind` on podman is in scope (S28).
+- **Kubernetes client binaries in the image**: `setup-user` installs
+  them per user (§spec:k8s-clients). The compose provider
+  (§spec:compose-provider) and the enabling config for rootless `kind`
+  on podman (§spec:rootless-k8s-enabling) are in scope.
