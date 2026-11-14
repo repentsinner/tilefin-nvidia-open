@@ -162,7 +162,7 @@ GPU passthrough support:
 
 ## GPU passthrough to a local VM §spec:gpu-passthrough
 
-*Status: not started*
+*Status: in progress*
 
 ### Problem
 
@@ -402,6 +402,33 @@ remains. It shall:
 
 The recipe shall never reboot and shall change nothing the operator has
 not confirmed. Its changes take effect at the next login.
+
+#### VM power recipe §spec:vm-power-recipe
+
+`ujust vm` starts, stops and reports a VM on the system libvirt
+connection, so the daily cycle of a passthrough guest needs neither
+virt-manager nor `virsh` syntax. The system connection is the one that
+holds guests with passed-through devices.
+
+- `ujust vm status` shall print the VM's name and state; it is the
+  default action.
+- `ujust vm start` shall start a stopped VM and leave a running one
+  alone. When libvirt refuses the start, the recipe shall show libvirt's
+  error, which carries the processes §spec:gpu-handover names, and exit
+  non-zero.
+- `ujust vm stop` shall ask the guest to shut down and wait for it. When
+  the guest has not stopped within the wait, the recipe shall exit
+  non-zero and name the forcing command; it shall never force on its
+  own, because a forced stop can lose the guest's unsaved work.
+- `ujust vm stop --force` shall power the VM off at once.
+- With no name given, the recipe shall act on the only defined VM,
+  offer a choice of VMs when several exist and it runs at a terminal,
+  and otherwise ask for a name. No VM name appears in the image.
+- After a start, when the guest carries Looking Glass shared memory, the
+  recipe shall point the operator at Looking Glass.
+
+GPU handover happens in the libvirt hook, not in the recipe, so a VM
+started from virt-manager or `virsh` behaves the same way.
 
 #### Out of scope
 
