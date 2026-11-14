@@ -119,7 +119,7 @@ SHELL_TOOLS=(
 )
 
 #------------------------------------------------------------------------------
-# Virtualization (Windows VM + Looking Glass support)
+# Virtualization (VM hosting and GPU passthrough, §spec:virtualization)
 #------------------------------------------------------------------------------
 
 VIRTUALIZATION=(
@@ -131,8 +131,32 @@ VIRTUALIZATION=(
     edk2-ovmf                 # UEFI firmware for VMs
     swtpm                     # TPM emulation (Windows 11 requirement)
     swtpm-tools
-    looking-glass-client      # Low-latency framebuffer for GPU passthrough (from COPR)
     virtiofsd                 # Fast file sharing with VMs
+)
+
+# Libraries the Looking Glass client links directly. The Containerfile builds
+# the client itself (§spec:looking-glass-client), so no package pulls these in.
+LOOKING_GLASS_RUNTIME=(
+    fontconfig
+    gmp
+    libdecor
+    libglvnd-egl
+    libglvnd-glx
+    libsamplerate
+    libwayland-client
+    libwayland-cursor
+    libwayland-egl
+    libX11
+    libXcursor
+    libXfixes
+    libXi
+    libXinerama
+    libXpresent
+    libXScrnSaver
+    libxkbcommon
+    nettle
+    pipewire-libs
+    pulseaudio-libs
 )
 
 #------------------------------------------------------------------------------
@@ -142,7 +166,6 @@ VIRTUALIZATION=(
 COPR_REPOS=(
     craftidore/wayblueorg-hyprland  # hyprlock, hypridle (used with Niri too)
     leloubil/wl-clip-persist
-    pgaskin/looking-glass-client
     atim/starship                   # starship is not packaged in Fedora proper
 )
 
@@ -191,6 +214,7 @@ ALL_PACKAGES=(
     "${SHELL_TOOLS[@]}"
     # Virtualization
     "${VIRTUALIZATION[@]}"
+    "${LOOKING_GLASS_RUNTIME[@]}"
 )
 
 echo "Installing ${#ALL_PACKAGES[@]} packages..."
@@ -430,6 +454,22 @@ polkit.addRule(function(action, subject) {
     }
 });
 EOF
+
+# GPU passthrough to a local VM (§spec:gpu-passthrough). Each piece is inert
+# on a machine that never passes a GPU through.
+# Hand the NVIDIA GPU to a guest and back (§spec:gpu-handover). A real file,
+# not a symlink into /usr, so it carries the policy's virt_hook_t label.
+install -Dm755 /ctx/nvidia-handover /etc/libvirt/hooks/qemu.d/50-nvidia-handover
+# Shared-memory owner group, the shared memory itself and the guest log
+# directory, each labelled by the module below (§spec:passthrough-selinux-labels).
+install -Dm644 /ctx/looking-glass.sysusers /usr/lib/sysusers.d/looking-glass.conf
+install -Dm644 /ctx/passthrough.tmpfiles /usr/lib/tmpfiles.d/tilefin-passthrough.conf
+# -n: build the policy store without loading it; the booted system loads it.
+semodule -n -i /ctx/tilefin-passthrough.cil
+# The Containerfile copies the client and its icon in; the launcher entry and
+# the client defaults come from here (§spec:looking-glass-client).
+install -Dm644 /ctx/looking-glass-client.desktop /usr/share/applications/looking-glass-client.desktop
+install -Dm644 /ctx/looking-glass-client.ini /etc/looking-glass-client.ini
 
 # Raise memlock limit for GPU/RDMA workloads (nvidia_p2p_get_pages,
 # ibv_reg_mr). Applies to all users in wheel group.

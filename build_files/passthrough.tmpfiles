@@ -1,0 +1,10 @@
+# §spec:passthrough-selinux-labels
+# Looking Glass shared memory. tmpfiles labels it from the policy's file
+# contexts, which tilefin-passthrough.cil sets to svirt_tmpfs_t so confined
+# QEMU may open it.
+f /dev/shm/looking-glass 0660 root looking-glass -
+# Guest logs. The image ships nothing under /var, and a directory created on
+# demand gets var_log_t, which virtlogd may not write. Created here, it gets
+# virt_log_t from the policy's file contexts.
+d /var/log/libvirt 0700 root root -
+d /var/log/libvirt/qemu 0700 root root -
