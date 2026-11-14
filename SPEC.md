@@ -1209,43 +1209,16 @@ declares.
 
 ## Dual-channel image publishing §spec:image-channels
 
-*Status: in progress*
+*Status: complete*
 
 ### Problem
 
-The build workflow produces `latest` and `latest.YYYYMMDD` tags on
-every push to main and daily cron. Semver tags (`0.4.4`) are generated
-for release tag pushes but never published due to two
-independent bugs:
-
-1. **Job dependency skip cascade.** The `build_push` job declares
-   `needs: [changes]`, but the `changes` job only runs on
-   `pull_request` events (`if: github.event_name == 'pull_request'`).
-   On tag pushes, schedule, and `workflow_dispatch`, `changes` is
-   skipped. GitHub Actions propagates `skipped` status through `needs`
-   — all downstream jobs skip unless they use `if: always()`. The
-   `build_push` `if` condition is logically correct but never
-   evaluated because the job is skipped before the condition runs.
-
-2. **Push gate rejects tags.** The Login, Push-to-GHCR, and
-   cosign-signing steps gate on
-   `github.ref == format('refs/heads/{0}', ...)`, which excludes
-   `refs/tags/v*`. Even if `build_push` ran on a tag push, it would
-   build the image but not publish it.
-
-Bug #1 was introduced in PR #36 (`772e10b`, merged 2026-03-31) and
-stopped every image from publishing until PR #38 fixed it
-(§spec:build-push-all-events). Bug #2 remains.
-
-Three user-facing problems remain:
-
-1. Semver-tagged images never reach GHCR. There is no `stable`
-   channel and no way to pin to a known release.
-2. There is no distinction between "upstream base image rebuilt" and
-   "we shipped a change." A user on `latest` receives both.
-3. Daily tags (`latest.20260318`) carry no indication of which
-   release they derive from. A user cannot tell whether
-   `latest.20260318` contains changes from `0.4.4` or `0.4.3`.
+A machine that tracks `latest` takes every main-branch change and every
+upstream base-image rebuild, with no way to stay on a known release or
+to roll back to one. The dated snapshot tags did not say which release
+they contained, and release tag builds published nothing: the push and
+signing steps admitted only the default branch, so `stable` and the
+semver tags never reached GHCR.
 
 ### Design
 
@@ -1327,6 +1300,32 @@ PRs.
 
 The `org.opencontainers.image.version` label is set to the value of
 `version.txt` for all builds.
+
+### Image retention §spec:image-retention
+
+A scheduled cleanup prunes the package on GHCR:
+
+| Images | Kept |
+| --- | --- |
+| `latest`, `stable`, release versions (`0.12.0`) | Always |
+| Daily snapshots (`latest.v0.12.0.20261114`, and the older `latest.20261114` and `20261114`) | 90 days |
+| Untagged images | 7 days |
+| Signatures whose image no longer exists | Not kept |
+
+*Why*: every build moves `latest` onto a new image and adds a cosign
+signature. Unpruned, the package held hundreds of untagged images and
+signatures, which buried the tagged images on the package page and made
+it hard to see what had been published. Release versions are the
+rollback targets `stable` exists for, so they never expire. Ninety days
+of snapshots keeps a quarter's daily rollback points on `latest`. A week
+of grace for untagged images covers anything pulled by digest.
+
+Expiring a snapshot tag from an image that also carries a channel tag
+removes the tag, not the image, so the image `latest` or `stable` points
+at is never deleted. Signatures need a tool that follows the cosign
+referrer from signature to image: they are tagged (`sha256-….sig`), so
+deleting untagged images alone strands them. A manual run defaults to a
+dry run.
 
 ## Install media §spec:install-media
 

@@ -184,6 +184,28 @@ on demand. To resume automatic updates:
 ujust production-mode --stop
 ```
 
+#### Choosing a channel
+
+The image is published on two channels:
+
+- **`latest`** (the default) rebuilds from `main` every day and on every
+  merge. Each build also gets a dated snapshot tag that names the release
+  it builds on, such as `latest.v0.12.0.20261114`.
+- **`stable`** moves only when a new release is tagged. Each release is
+  also published under its version, such as `0.12.0`.
+
+To move a machine to the stable channel, or to pin it to one release:
+
+```bash
+sudo bootc switch ghcr.io/repentsinner/tilefin-nvidia-open:stable
+sudo bootc switch ghcr.io/repentsinner/tilefin-nvidia-open:0.12.0
+```
+
+To see what has been published, open the package's
+[tagged versions](https://github.com/repentsinner/tilefin-nvidia-open/pkgs/container/tilefin-nvidia-open/versions?filters%5Bversion_type%5D=tagged).
+The newest `latest.v…` tag is what a machine on `latest` gets next.
+Snapshots are kept for 90 days and releases indefinitely.
+
 ### Virtual machines
 
 To start, stop, or check a VM without opening virt-manager:
