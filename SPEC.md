@@ -50,15 +50,17 @@ The image shall contain only software that meets at least one of:
 - A system service or kernel-level integration (libvirt, IOMMU, podman).
 - Desktop applications tightly coupled to the session (file manager,
   terminal, polkit agent).
+- A binary that configuration shipped in the image calls
+  (§spec:image-ships-shell-tools, §spec:compose-provider).
 
 Software that runs on demand with no session dependency belongs
 elsewhere:
 
 | Delivery | For |
 | --- | --- |
-| **Userbox** (distrobox, pre-built OCI) | Dev toolchains and distro packages |
+| **Per-user tools** (`~/.local/bin`, via `ujust setup-user`) | Standalone command-line tools that nothing in the image refers to: vendor installers, upstream release binaries, and mise-managed clients (§spec:image-excludes-user-tools, §spec:k8s-clients) |
+| **Userbox** (distrobox, pre-built OCI) | Dev toolchains that need a mutable distro userland |
 | **Flatpak** | Sandboxed GUI apps |
-| **Native installer** (`~/.local/bin`) | Self-updating vendor CLIs (e.g., Claude Code) |
 
 ## Niri compositor §spec:niri-compositor
 
@@ -363,27 +365,27 @@ Three repos, three concerns:
 | Repo | Contains | Lifecycle |
 | --- | --- | --- |
 | **tilefin-nvidia-open** | OS image, ujust recipes, shell aliases, skel default | Rare |
-| **repentsinner/userbox** | Containerfile for user tools image | Frequent |
+| **repentsinner/userbox** | Containerfile for the dev toolchain image | Frequent |
 | **chezmoi dotfiles** | `.ini`, systemd unit, shell config | Personal |
 
 #### Bootstrap and graceful degradation
 
-A fresh system has no chezmoi (it lives inside the userbox) and no
-userbox `.ini` (it's managed by chezmoi). This cycle breaks via three
-layers of the same file, each more specific than the last:
+The userbox `.ini` comes from three layers of the same file, each more
+specific than the last:
 
 1. **Skel default** — the image ships
    `/etc/skel/.config/distrobox/userbox.ini` with a default image path.
    Every new user account gets a working `.ini` at account creation.
 2. **ujust override** — `ujust setup-user [image]` accepts an optional
-   image argument, rewrites the `.ini`, and runs assembly. Also installs
-   native CLI tools (Claude Code, uv). Useful for first boot or
-   switching images.
+   image argument, rewrites the `.ini`, and runs assembly. It also
+   installs the per-user tools, chezmoi among them
+   (§spec:ujust-setup-user). Useful for first boot or switching images.
 3. **Chezmoi steady-state** — once the userbox is running, chezmoi owns
    the `.ini` going forward. Changes flow from dotfiles.
 
 All shell aliases and hooks are guarded with `command -v`. A system
-with no userbox functions normally — it just lacks CLI tools.
+with no userbox functions normally and lacks only the toolchains the
+userbox carries.
 
 ### Image ships shell-integration tools §spec:image-ships-shell-tools
 
