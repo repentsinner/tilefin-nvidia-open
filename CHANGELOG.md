@@ -1,3 +1,10 @@
+# [0.10.0](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.9.0...v0.10.0) (2026-11-14)
+
+
+### Features
+
+* **ujust:** add a vm recipe to start, stop and check a VM ([cb0c96c](https://github.com/repentsinner/tilefin-nvidia-open/commit/cb0c96cf86eb3aef6e9296396de1cc513b10bf2a))
+
 # [0.9.0](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.8.0...v0.9.0) (2026-11-14)
 
 
