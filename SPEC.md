@@ -151,13 +151,272 @@ GPU passthrough support:
 
 - libvirt, qemu-kvm, virt-manager, virt-install.
 - edk2-ovmf (UEFI firmware), swtpm (TPM emulation for Windows 11).
-- looking-glass-client (low-latency framebuffer, from COPR).
+- looking-glass-client (low-latency framebuffer for a passed-through
+  GPU, §spec:looking-glass-client).
 - virtiofsd (fast file sharing).
 - Polkit rule: wheel group can manage VMs without extra groups.
 - IOMMU kernel arg `intel_iommu=on` via `bootc kargs.d`, with
   `iommu=pt` beside it for GPU-direct packet I/O (§spec:iommu-mode).
   The AMD IOMMU enables itself and needs no argument. Passthrough works under `pt`, because `vfio-pci`
   gives a guest's device a translated domain of its own.
+
+## GPU passthrough to a local VM §spec:gpu-passthrough
+
+*Status: not started*
+
+### Problem
+
+Some workloads run only on Windows and need a real GPU: Autodesk Fusion
+has no Linux client, and Windows guests get almost no 3D acceleration
+from an emulated display. §spec:virtualization installs the stack for
+passing a GPU through to a guest, but on a single-NVIDIA-GPU host the
+stack does not yield a working setup:
+
+- The host desktop and the host's own processes hold the NVIDIA GPU, so
+  libvirt cannot detach it for a guest.
+- The packaged Looking Glass client dies with `SIGILL` on any CPU
+  without AVX-512 (§spec:looking-glass-client), so there is no way to
+  see the guest except a second cable and a monitor input switch.
+- Confined QEMU cannot open Looking Glass's shared memory, and the guest
+  log directory does not exist with a label `virtlogd` may write.
+- On hosts whose IOMMU addresses fewer bits than the CPU, a guest with a
+  passed-through GPU and Looking Glass shared memory either aborts at
+  start or hangs in firmware (§spec:guest-address-width).
+- A guest that grabs the keyboard leaves no way back to the desktop
+  short of switching virtual terminals.
+
+Each failure was met and worked around by hand on an Intel Raptor Lake
+host with an RTX A6000. This section turns those workarounds into the
+image's behavior.
+
+### Design
+
+The host desktop runs on the integrated GPU. The NVIDIA GPU belongs to
+the host while no guest uses it and moves to a guest for that guest's
+lifetime, so CUDA and media work keep the GPU whenever the VM is off.
+Looking Glass shows the guest's GPU output in a window on the host
+desktop through shared memory, and SPICE carries keyboard and mouse.
+
+The image carries the mechanism, and the machine carries the choice.
+Which GPU drives the desktop and which one a guest may take is a
+per-machine designation that `ujust` writes (§spec:passthrough-setup).
+No PCI address appears in the image. Machines without a designation
+behave as before, which keeps every piece below inert on a host that
+never passes a GPU through.
+
+*Rejected: single-GPU passthrough*, where the host's only GPU goes to the
+guest and the host desktop stops. It ends the host session for the
+guest's lifetime and leaves Looking Glass nothing to draw with.
+
+*Rejected: streaming the guest (Sunshine and Moonlight, RDP)* as the
+local display path. A streamed picture is compressed, which degrades
+thin CAD lines and text, and adds latency. Looking Glass copies frames
+uncompressed through shared memory. Streaming remains the tool for
+reaching a guest from another machine; Looking Glass works only on the
+machine that runs the guest.
+
+#### GPU handover §spec:gpu-handover
+
+A libvirt hook releases the host's NVIDIA GPU before a guest that passes
+it through starts, and restores it after that guest stops. libvirt moves
+each managed host device to `vfio-pci` and back; the hook only makes the
+GPU releasable.
+
+- Before a guest starts, when the guest passes through a device the
+  `nvidia` driver owns, the hook shall stop `nvidia-persistenced` and
+  unload the NVIDIA kernel modules.
+- When any process other than `nvidia-persistenced` holds an NVIDIA
+  device node, the hook shall refuse the start, name the processes in
+  the error libvirt reports, and leave the GPU with the host.
+- When the release fails partway, the hook shall restore the host state
+  before it reports the failure, so a failed start never strands the GPU
+  unbound.
+- After a guest that took the GPU stops, the hook shall load the NVIDIA
+  modules and restart `nvidia-persistenced` if it was running.
+- For a guest without such a device, the hook shall do nothing.
+- Each release, refusal and restore shall produce one log line with the
+  domain name in a field.
+
+*Why unload the modules rather than unbind one device*: unloading is the
+path that works on the NVIDIA driver without depending on how cleanly it
+tolerates hot unbind with modesetting loaded. It takes every NVIDIA GPU
+from the host, so the hook assumes one NVIDIA GPU per host. A host with
+two needs per-device unbinding, which this section does not cover.
+
+*Why refuse instead of killing holders*: the holders are the user's
+applications. A start that fails with their names is recoverable; a
+start that kills them is not.
+
+The hook shall work with `virtqemud_t` enforcing. libvirt runs hooks in
+the daemon's domain, and that domain runs permissive on Fedora 44, which
+lets `systemctl` and `modprobe` succeed while logging denials. A hook
+that depends on that permissiveness breaks silently the day the policy
+tightens. The image therefore either carries policy that grants exactly
+these operations or performs them outside the daemon's domain.
+
+#### Looking Glass client §spec:looking-glass-client
+
+The image shall ship a Looking Glass client built from the pinned
+upstream release B7, compiled without host-CPU tuning. The client and
+the guest's Looking Glass host application shall come from the same
+release, because the two speak a release-specific protocol; the guest
+installs the B7 host from the Looking Glass downloads page.
+
+*Why build in the image*: upstream's build defaults to
+`OPTIMIZE_FOR_NATIVE`, which compiles for the build machine's CPU. The
+COPR package keeps that default and builds on machines with AVX-512, so
+its client executes AVX-512 instructions in a static initializer and
+dies before `main()` on any CPU without them, which includes Intel
+desktop parts from 12th generation on (pgaskin/rpms#3). CI runners
+carry AVX-512 as often as not, so the flag stays off in the image's own
+build as well.
+
+*Why B7*: B7 is the newest final release. B8 brings a guest-side virtual
+display that removes the need for a dummy plug, but it exists only as a
+release candidate and is protocol-incompatible with B7. The image moves
+to B8 when it is final.
+
+The client shall appear in application launchers through a desktop entry
+and the upstream logo. The entry names the client generically: it
+displays any local guest that runs a Looking Glass host, not a
+particular VM.
+
+The image shall ship a client default whose escape key exists on common
+keyboards. The escape key releases keyboard and mouse capture and,
+held, prefixes the client's own shortcuts. The client swallows the
+escape key and every key pressed while it is held, so the key cannot be
+a modifier a guest needs, such as either Ctrl or Alt, and cannot be a
+chord. The upstream default, Scroll Lock, is absent from many keyboards,
+which leaves no way to release capture.
+
+#### Passthrough SELinux labels §spec:passthrough-selinux-labels
+
+- `/dev/shm/looking-glass` shall carry `svirt_tmpfs_t` from boot. The
+  package's tmpfiles rule creates it as `tmpfs_t`, which confined QEMU
+  (`svirt_t`) may not open, and the guest then fails to start with
+  `can't open backing store /dev/shm/looking-glass`. A guest's MCS
+  categories dominate the file's `s0` level, so every guest on the host
+  and the unconfined client can open the same file.
+- `/var/log/libvirt/qemu` shall exist from boot with `virt_log_t`. The
+  image ships no content under `/var`, so the directory appears on
+  demand with the generic `var_log_t`, and `virtlogd` then refuses to
+  open a guest's log, which fails the guest's first start.
+
+#### Guest address width §spec:guest-address-width
+
+On a host whose IOMMU addresses fewer bits than the CPU's physical
+address width, a passthrough guest shall see a physical address width no
+wider than the IOMMU's, and its firmware's 64-bit PCI window shall hold
+the passed-through GPU's largest BAR.
+
+*Why*: a guest using the host CPU model inherits the CPU's physical
+address width (46 bits on Raptor Lake), and OVMF places 64-bit BARs near
+the top of that space. VFIO maps every RAM-backed guest region into the
+passed-through device's IOMMU domain so the device can reach it, which
+includes the Looking Glass shared memory. The client-platform IOMMU
+addresses 39 bits (512 GiB), the mapping fails, and QEMU aborts in
+`vfio_container_region_add` as the firmware programs the BAR. Limiting
+the guest to 39 bits brings the BARs below the IOMMU limit. OVMF then
+falls back to a fixed 64-bit window too small for a 64 GiB GPU BAR and
+hangs before it draws anything, so the window grows with it: 128 GiB
+fits an RTX A6000's BAR1, guest RAM and the small BARs inside 512 GiB.
+
+These are properties of a guest's definition, not of the image. The
+image does not own a user's VMs, so §spec:passthrough-setup detects the
+mismatch and applies the settings to a named guest on confirmation.
+libvirt reserves the `opt/ovmf/` prefix in its `fwcfg` sysinfo, so the
+firmware window travels as a QEMU command-line argument in the domain.
+
+#### Desktop leaves the passthrough GPU alone §spec:passthrough-desktop-gpu
+
+On a machine with a passthrough designation:
+
+- niri shall render on the integrated GPU and shall not open the
+  designated GPU, selected by stable device paths rather than `cardN`
+  or `renderDN` numbers, which change between boots.
+- The session shall not export NVIDIA rendering variables, whatever is
+  cabled to the designated GPU (§spec:gpu-detection).
+- Desktop applications shall not open the designated GPU through their
+  EGL or Vulkan loaders. A loader that enumerates every GPU opens the
+  NVIDIA device nodes, which then block the handover
+  (§spec:gpu-handover); GTK 4 applications on Vulkan and Firefox's media
+  decoder both do. CUDA does not go through these loaders, so host CUDA
+  work keeps the GPU while no guest holds it.
+
+The designation reaches niri through an optional include at the end of
+the image's niri config, so machines without a designation read no
+extra file and a user config that includes the system config inherits
+it.
+
+*Why a designation, not detection*: whether a GPU drives the desktop
+cannot be read from connectors. A passed-through GPU often has a cable to
+a second monitor input, both as Looking Glass's capture target and as a
+fallback view of the guest, and it reports that monitor as connected
+while it belongs to the host.
+
+Changing which DRM devices niri has open takes effect at the next
+login. niri applies config reloads live, and a reload that removes a DRM
+device crashes `xwayland-satellite` 0.8.3, closing every X11 client.
+
+#### Keyboard grab escape §spec:keyboard-grab-escape
+
+niri shall bind a key that toggles keyboard-shortcut inhibition and that
+no client can inhibit. Looking Glass in capture mode, and any VM viewer
+or remote desktop, inhibits niri's shortcuts while it holds the
+keyboard. When such a client hangs or its own release key is
+unreachable, that bind is the only way back to the desktop without
+switching virtual terminals. The binding is Mod+Shift+Escape, because the
+image binds Mod+Escape to the launcher.
+
+#### Looking Glass workspace §spec:looking-glass-workspace
+
+The Looking Glass client shall open fullscreen and focused on a named
+workspace, with a bind to reach it.
+
+*Why*: Looking Glass scales and letterboxes the guest's picture; it does
+not resize the guest, whose resolution follows the display attached to
+the passed-through GPU. A tiled column only shrinks that picture.
+Resizing also fights input capture: niri resizes through key binds,
+which capture inhibits, and resizing a captured client has left its
+input stuck. A dedicated fullscreen workspace removes resizing from the
+normal flow.
+
+#### Per-machine setup §spec:passthrough-setup
+
+`ujust setup-gpu-passthrough` prepares a machine and reports what
+remains. It shall:
+
+- Report whether the integrated GPU is the boot GPU, and name the
+  firmware setting when it is not (on MSI boards, Initiate Graphic
+  Adapter set to IGD). The boot GPU owns the console and the greeter.
+- Report the IOMMU group of the GPU to pass through and the devices it
+  shares, and refuse a group that holds devices other than the GPU's own
+  functions.
+- Write the passthrough designation (§spec:passthrough-desktop-gpu) on
+  confirmation.
+- Add the invoking user to the `looking-glass` group, which owns the
+  shared-memory file.
+- Compare the IOMMU's address width with the CPU's, and when it is
+  narrower, print the guest settings §spec:guest-address-width requires
+  and apply them to a guest the operator names, only on confirmation.
+
+The recipe shall never reboot and shall change nothing the operator has
+not confirmed. Its changes take effect at the next login.
+
+#### Out of scope
+
+- *Creating the VM.* ISO, disk size and CPU count are personal choices,
+  so the README documents a procedure (UEFI with Secure Boot, emulated
+  TPM 2.0, virtio storage and network, managed PCI host devices for the
+  GPU's functions, IVSHMEM for Looking Glass, no emulated display once
+  Looking Glass works) instead of a recipe.
+- *A 3Dconnexion SpaceMouse in the guest without a dedicated receiver.*
+  3Dconnexion's receiver presents every paired device as one USB device,
+  and USB passthrough moves whole devices, so a SpaceMouse paired with a
+  CAD mouse cannot go to the guest alone. A cable or a second receiver
+  dedicated to the guest works with ordinary USB passthrough. A virtual
+  HID device built from the host's receiver is possible with the
+  kernel's USB gadget support and remains future work.
 
 ## Wayland environment config §spec:wayland-config
 
@@ -670,7 +929,7 @@ login-ready state on first boot without a manual `systemctl enable`.
 
 ## Dynamic GPU detection for hybrid Intel+Nvidia systems §spec:gpu-detection
 
-*Status: complete*
+*Status: in progress*
 
 Where an Intel iGPU drives the display and the Nvidia GPU is reserved
 for CUDA or PCI passthrough (§spec:virtualization), Nvidia rendering
@@ -679,8 +938,10 @@ variables (`GBM_BACKEND`, `__GLX_VENDOR_LIBRARY_NAME`,
 fails to start or renders incorrectly.
 
 `niri-session.sh` exports those variables only when a DRM connector on
-an Nvidia-driven card reports a connected display. Otherwise they stay
-unset and Mesa selects Intel. `config.kdl` carries only
+an Nvidia-driven card reports a connected display and the machine
+carries no passthrough designation. Otherwise they stay unset and Mesa
+selects Intel. A designated passthrough GPU never drives the desktop,
+even with a monitor cabled to it (§spec:passthrough-desktop-gpu). `config.kdl` carries only
 hardware-independent variables (`XDG_SESSION_TYPE`, `XCURSOR_SIZE`,
 `ELECTRON_OZONE_PLATFORM_HINT`).
 
