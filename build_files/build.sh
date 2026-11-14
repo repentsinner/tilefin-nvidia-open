@@ -495,17 +495,17 @@ EOF
 # mode. These kernel args apply on the next boot after an image switch.
 mkdir -p /usr/lib/bootc/kargs.d
 cat > /usr/lib/bootc/kargs.d/10-iommu.toml <<'EOF'
-# intel_iommu=on and amd_iommu=on enable the IOMMU so VFIO can hand a GPU to a
-# guest (§spec:virtualization). The AMD driver initialises by default and logs
-# "Unknown option - 'on'" for its argument, so that one is inert and kept for
-# symmetry.
+# intel_iommu=on enables the Intel IOMMU so VFIO can hand a GPU to a guest
+# (§spec:virtualization), because Fedora builds without
+# CONFIG_INTEL_IOMMU_DEFAULT_ON. The AMD IOMMU enables itself from the firmware
+# tables and takes no argument.
 #
 # iommu=pt gives host-owned devices an identity domain. The NIC needs it to
 # DMA into GPU memory registered as a DMA-BUF memory region, because under a
 # translating IOMMU every one of those peer-to-peer writes faults
 # (§spec:iommu-mode). Passthrough to a guest still works: binding vfio-pci
 # moves that device's group into a translated domain that VFIO owns.
-kargs = ["intel_iommu=on", "amd_iommu=on", "iommu=pt"]
+kargs = ["intel_iommu=on", "iommu=pt"]
 EOF
 
 # Enable verbose boot (show kernel and systemd messages instead of splash)

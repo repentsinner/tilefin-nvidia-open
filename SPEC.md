@@ -152,9 +152,9 @@ GPU passthrough support:
 - looking-glass-client (low-latency framebuffer, from COPR).
 - virtiofsd (fast file sharing).
 - Polkit rule: wheel group can manage VMs without extra groups.
-- IOMMU kernel args `intel_iommu=on` and `amd_iommu=on` via `bootc
-  kargs.d`, with `iommu=pt` beside them for GPU-direct packet I/O
-  (§spec:iommu-mode). Passthrough works under `pt`, because `vfio-pci`
+- IOMMU kernel arg `intel_iommu=on` via `bootc kargs.d`, with
+  `iommu=pt` beside it for GPU-direct packet I/O (§spec:iommu-mode).
+  The AMD IOMMU enables itself and needs no argument. Passthrough works under `pt`, because `vfio-pci`
   gives a guest's device a translated domain of its own.
 
 ## Wayland environment config §spec:wayland-config
@@ -1252,8 +1252,8 @@ region.
 
 ### IOMMU mode §spec:iommu-mode
 
-The image shall set `iommu=pt` alongside `intel_iommu=on` and
-`amd_iommu=on`, in `10-iommu.toml` (§spec:virtualization). Host-owned
+The image shall set `iommu=pt` alongside `intel_iommu=on`, in
+`10-iommu.toml` (§spec:virtualization). Host-owned
 devices then DMA through an identity domain. A device bound to
 `vfio-pci` for a guest still gets a translated domain, because VFIO
 claims the group and attaches a domain of its own, so passthrough is
@@ -1290,10 +1290,13 @@ anywhere in memory. Two things narrow the exposure without removing it:
   the silent failure `pt` causes for them (§spec:decklink-capture) does
   not arise.
 
-`amd_iommu=on` is inert. The AMD driver has no `on` option, initialises
-by default, and logs `AMD-Vi: Unknown option - 'on'` at boot. It stays
-for symmetry with `intel_iommu=on`, which Fedora's kernel needs because
-it builds without `CONFIG_INTEL_IOMMU_DEFAULT_ON`.
+`iommu=pt` selects the default domain type and enables no IOMMU, so each
+vendor's driver still has to come up on its own. Fedora's kernel builds
+without `CONFIG_INTEL_IOMMU_DEFAULT_ON`, so the Intel driver needs
+`intel_iommu=on`. The AMD driver initialises whenever the firmware
+describes an IOMMU, and the image sets no `amd_iommu=` argument. That
+driver has no `on` option: an earlier image set `amd_iommu=on`, and the
+kernel logged `AMD-Vi: Unknown option - 'on'` and ignored it.
 
 #### Alternatives
 
@@ -1476,12 +1479,12 @@ physical cores to isolate. The derivation:
 
 On molecule every device reports one NUMA node, so L3 grouping is the
 only locality signal: eight groups of four cores, eight threads each.
-
-The arguments apply as local kargs through `rpm-ostree kargs`, replacing
-an earlier partition rather than adding a second. Local kargs are machine
 Intel desktop CPUs share one L3 across the package, so there the
 single-group rule and, on hybrid parts, the core-type rule decide the
 partition.
+
+The arguments apply as local kargs through `rpm-ostree kargs`, replacing
+an earlier partition rather than adding a second. Local kargs are machine
 state, and §spec:karg-drift treats them as deliberate. `ujust media-cores
 --remove` deletes them.
 
@@ -2334,7 +2337,7 @@ One entry is local state:
 
 - `iommu=pt` — appended by hand to repair the AJA-era deletion
   (§spec:decklink-capture). Its position after the NVIDIA parameter,
-  rather than beside `amd_iommu=on`, is what marks it local. The image
+  rather than beside `intel_iommu=on`, is what marks it local. The image
   carries the same argument (§spec:iommu-mode), so the operator does
   nothing. The upgrade that brings it finds `iommu=pt` already present
   and adds no second copy. From then on the image owns it: a later image
@@ -2343,6 +2346,10 @@ One entry is local state:
   `iommu=pt` exactly once. That check holds whichever of `bootc` and
   `rpm-ostree` staged the upgrade; only bootc's diff was read. If it
   shows twice, remove one copy with `rpm-ostree kargs --editor`.
+
+The same upgrade removes `amd_iommu=on`. The previous image's `kargs.d`
+added it and this one drops it (§spec:iommu-mode), so it is image state
+and needs no operator step.
 
 `rhgb` and `quiet` survive from the base image, against the intent of
 `20-verbose-boot.toml`; `build.sh` documents
