@@ -1,3 +1,15 @@
+# [0.12.0](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.11.0...v0.12.0) (2026-11-14)
+
+
+### Bug Fixes
+
+* **looking-glass:** send extended keys as real E0 scancodes ([857adb9](https://github.com/repentsinner/tilefin-nvidia-open/commit/857adb984ad9d5eb77d7d8f032089ddbfd3fd206)), closes [gnif/LookingGlass#1341](https://github.com/gnif/LookingGlass/issues/1341)
+
+
+### Features
+
+* **passthrough:** block host sleep under a guest and shut guests down cleanly ([7b43dfa](https://github.com/repentsinner/tilefin-nvidia-open/commit/7b43dfa7f79511a6f0f44ec4594de87dac905a42))
+
 # [0.11.0](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.10.0...v0.11.0) (2026-11-14)
 
 
