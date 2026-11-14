@@ -50,15 +50,17 @@ The image shall contain only software that meets at least one of:
 - A system service or kernel-level integration (libvirt, IOMMU, podman).
 - Desktop applications tightly coupled to the session (file manager,
   terminal, polkit agent).
+- A binary that configuration shipped in the image calls
+  (§spec:image-ships-shell-tools, §spec:compose-provider).
 
 Software that runs on demand with no session dependency belongs
 elsewhere:
 
 | Delivery | For |
 | --- | --- |
-| **Userbox** (distrobox, pre-built OCI) | Dev toolchains and distro packages |
+| **Per-user tools** (`~/.local/bin`, via `ujust setup-user`) | Standalone command-line tools that nothing in the image refers to: vendor installers, upstream release binaries, and mise-managed clients (§spec:image-excludes-user-tools, §spec:k8s-clients) |
+| **Userbox** (distrobox, pre-built OCI) | Dev toolchains that need a mutable distro userland |
 | **Flatpak** | Sandboxed GUI apps |
-| **Native installer** (`~/.local/bin`) | Self-updating vendor CLIs (e.g., Claude Code) |
 
 ## Niri compositor §spec:niri-compositor
 
@@ -363,27 +365,27 @@ Three repos, three concerns:
 | Repo | Contains | Lifecycle |
 | --- | --- | --- |
 | **tilefin-nvidia-open** | OS image, ujust recipes, shell aliases, skel default | Rare |
-| **repentsinner/userbox** | Containerfile for user tools image | Frequent |
+| **repentsinner/userbox** | Containerfile for the dev toolchain image | Frequent |
 | **chezmoi dotfiles** | `.ini`, systemd unit, shell config | Personal |
 
 #### Bootstrap and graceful degradation
 
-A fresh system has no chezmoi (it lives inside the userbox) and no
-userbox `.ini` (it's managed by chezmoi). This cycle breaks via three
-layers of the same file, each more specific than the last:
+The userbox `.ini` comes from three layers of the same file, each more
+specific than the last:
 
 1. **Skel default** — the image ships
    `/etc/skel/.config/distrobox/userbox.ini` with a default image path.
    Every new user account gets a working `.ini` at account creation.
 2. **ujust override** — `ujust setup-user [image]` accepts an optional
-   image argument, rewrites the `.ini`, and runs assembly. Also installs
-   native CLI tools (Claude Code, uv). Useful for first boot or
-   switching images.
+   image argument, rewrites the `.ini`, and runs assembly. It also
+   installs the per-user tools, chezmoi among them
+   (§spec:ujust-setup-user). Useful for first boot or switching images.
 3. **Chezmoi steady-state** — once the userbox is running, chezmoi owns
    the `.ini` going forward. Changes flow from dotfiles.
 
 All shell aliases and hooks are guarded with `command -v`. A system
-with no userbox functions normally — it just lacks CLI tools.
+with no userbox functions normally and lacks only the toolchains the
+userbox carries.
 
 ### Image ships shell-integration tools §spec:image-ships-shell-tools
 
@@ -1632,7 +1634,7 @@ zram-only, which cannot back a hibernation image.
 Idle detection is hypridle's; the suspend decision is a guard script.
 hypridle fires each listener once per idle period, so a machine that
 went idle during business hours would not auto-suspend when 18:00
-passes — the listener already fired and will not re-fire without
+passes — the listener already fired and does not re-fire without
 intervening activity. A re-arm timer restarts hypridle at 18:00 on
 weekdays. The restart begins a fresh idle countdown: an already-idle
 machine fires the 30-minute listener again and suspends near 18:30.
@@ -1955,7 +1957,7 @@ That is a performance ceiling, not a functional blocker.
 ### Deferred: building nvidia-fs.ko
 
 Compiling nvidia-fs into the image was prototyped and deferred, not
-ruled out — see "Network filesystems will require it" below. It is
+ruled out — see "Network filesystems require it" below. It is
 buildable — the module needs one driver header (`nv-p2p.h`, public
 because the image runs the *open* driver), symbol CRCs read from the
 shipped `nvidia.ko`, and `kernel-devel` from Fedora's `updates-archive`
@@ -1972,7 +1974,7 @@ shipped `nvidia.ko`, and `kernel-devel` from Fedora's `updates-archive`
 `p2pdma` avoids all three, and covers the local-NVMe workload this
 section was raised for.
 
-#### Network filesystems will require it
+#### Network filesystems require it
 
 `p2pdma` is restricted to NVMe block devices. NVIDIA scopes the
 exemption explicitly: nvidia-fs.ko "is not necessary for the case of
@@ -2004,9 +2006,9 @@ BAR1 rather than mapped through a sliding window. That took
 (§spec:nvidia-params-as-kargs explains why).
 
 The value is `2` (AUTO), not `1` (ENABLE). Per `nvrm_registry.h`, AUTO
-"will only map static BAR1 if static BAR1 size is calculated to be big
-enough to map all of FB once plus a calculated amount for other expected
-BAR1 mappings", whereas ENABLE "does not take into account other
+maps static BAR1 only when BAR1 is big enough to map all of FB once plus
+an allowance for other expected BAR1 mappings, whereas ENABLE "does not
+take into account other
 expected BAR1 mappings and may lead to BAR1 exhaustion later". Those
 other mappings are GPUDirect RDMA's, which the static-BAR1 configuration
 had to leave room for.
@@ -2051,7 +2053,7 @@ work.
 
 The observable signal that both gates passed is
 `/sys/bus/pci/devices/<gpu>/p2pmem/`. If that directory does not exist,
-the driver never registered the pool and no userspace configuration will
+the driver never registered the pool and no userspace configuration can
 produce a DMA path. Check `/proc/driver/nvidia/params` alongside it —
 a truncated `RegistryDwords` means the parameter never arrived, which is
 a different failure from the driver declining to register.

@@ -7,9 +7,9 @@ A custom [bootc](https://github.com/bootc-dev/bootc) image built on [Universal B
 | Choice | Rationale |
 | -------- | ----------- |
 | **base-nvidia base** | Minimal base with Nvidia drivers. No GNOME, Homebrew, Docker, or other packages to strip. Every installed package is an explicit choice. |
-| **Niri compositor** | Scrollable tiling, clean fractional scaling, official Fedora package. |
-| **Wayland-only** | No XWayland/X11. Future-forward graphics stack. Apps that don't support Wayland won't work. |
-| **Tools in containers** | CLI tools live in a distrobox userbox, not the system image. Image updates and tool updates are independent. |
+| **Niri compositor** | Scrollable tiling and clean fractional scaling. The image builds niri from a fork that adds a saturation window rule. |
+| **Wayland-native** | The session is Wayland. X11 apps run through xwayland-satellite, which niri starts when an X11 client connects. |
+| **Tools outside the image** | The image carries only the tools its own shell configuration calls. Standalone tools install per user, and dev toolchains live in a distrobox userbox, so neither waits on an image update. |
 | **Minimal notifications** | Mako runs invisibly by default. A waybar indicator shows when notifications exist. No toasts stealing focus. |
 | **Focus-follows-mouse** | Enabled in Niri. Keyboard navigation still works independently. |
 
@@ -20,7 +20,7 @@ A custom [bootc](https://github.com/bootc-dev/bootc) image built on [Universal B
 3. **Visual Quality**: Proper high-DPI support and modern aesthetics
 4. **Nvidia Compatibility**: Full GPU support for Nvidia hardware
 5. **Keyboard-Driven**: Efficient tiling window management
-6. **Clean separation**: OS image for session infrastructure, distrobox for user tools
+6. **Clean separation**: OS image for the session and the tools its configuration calls; per-user installs and a userbox for everything else
 
 ## Key Features
 
@@ -34,7 +34,7 @@ Niri's unique scrollable/infinite canvas workflow - windows tile horizontally an
 
 ## What This Image Provides
 
-The base image (`base-nvidia:gts`) provides Fedora, Nvidia open kernel modules, Podman, distrobox, just/ujust, Flatpak with Flathub, and media codecs. It ships no desktop environment. This image adds:
+The base image (`base-nvidia:latest`, which tracks the current Fedora release) provides Fedora, Nvidia open kernel modules, Podman, distrobox, just/ujust, Flatpak with Flathub, and media codecs. It ships no desktop environment. This image adds:
 
 ### Wayland Desktop Environment
 
@@ -73,7 +73,6 @@ The base image (`base-nvidia:gts`) provides Fedora, Nvidia open kernel modules, 
   - Natural scrolling enabled for touchpads
   - Custom keyboard and mouse configuration
 - **Podman socket**: Enabled by default
-- **Layout**: Master-stack layout configured as default
 - **Nvidia optimizations**: Full environment variable configuration for optimal GPU performance
 
 ## Identified Requirements
@@ -83,7 +82,7 @@ Based on the current setup, any replacement compositor must support:
 ### Core Requirements
 
 - **Nvidia GPU compatibility**: Must work with proprietary Nvidia drivers
-- **Wayland-only**: Pure Wayland, no XWayland/X11 compatibility (X11-only apps will not work)
+- **Wayland-native**: A Wayland session, with X11 apps served through xwayland-satellite
 - **HiDPI scaling**: Proper fractional scaling and readable text/UI elements
 - **OSTree compatibility**: Works with immutable/atomic OS structure
 
@@ -138,10 +137,18 @@ ujust setup-user
 
 An interactive menu lets you select from:
 
-- **Native CLI tools**: Claude Code, uv, mise (all selected by default)
+- **Standalone tools**, installed into `~/.local/bin`: Claude Code, uv,
+  mise, `gh`, `chezmoi` and the lint gates (`shellcheck`) are selected by
+  default. The Kubernetes clients (`kubectl`, `helm`, `kind`, `talosctl`,
+  `kubeseal`, `mc`) are optional and install through mise.
 - **Flatpak apps**: Firefox, Bitwarden, Slack, Discord, Signal, Proton VPN
-- **Userbox container**: exports CLI tools (`gh`, `chezmoi`, `direnv`,
-  `zoxide`, `starship`, `eza`, `bat`, `bws`) to `~/.local/bin`
+- **Userbox container**: a distrobox that carries dev toolchains needing a
+  full Fedora userland. It exports `fvm`, the Flutter version manager, to
+  `~/.local/bin`.
+
+The shell tools behind the image's aliases and prompt (`bat`, `eza`,
+`zoxide`, `direnv`, `starship`, `rbw`) ship in the image and need no
+setup.
 
 To use a different userbox image:
 
@@ -149,8 +156,8 @@ To use a different userbox image:
 ujust setup-user ghcr.io/youruser/yourbox:latest
 ```
 
-After the userbox is running, bootstrap chezmoi for dotfiles and
-auto-assembly on future logins:
+Then bootstrap chezmoi for dotfiles and userbox auto-assembly on future
+logins:
 
 ```bash
 chezmoi init --apply <your-dotfiles-repo>
@@ -171,14 +178,19 @@ Customize by editing `~/.config/niri/config.kdl`. See the [Niri wiki](https://gi
 
 ## Package Management
 
-On an immutable system, software belongs in the right layer:
+On an immutable system, where a tool lands depends on what depends on it.
+Anything the image's own configuration calls ships in the image, because
+the configuration and the binary have to update together. Everything else
+installs outside the image, so it updates without a rebuild or a reboot:
 
-| Method | For | Example |
+| Layer | For | Example |
 | -------- | ----- | --------- |
-| **System image** | Session infrastructure, system services | Niri, greetd, libvirt |
+| **System image** | Session infrastructure, system services, and the binaries the image's own configuration and services call | Niri, greetd, libvirt, `starship`, `direnv`, `docker-compose` |
+| **Per-user tools** (`~/.local/bin`) | Standalone command-line tools that nothing in the image refers to | Claude Code, uv, `gh`, `chezmoi`, and the Kubernetes clients through mise |
+| **Distrobox** | Dev toolchains that need a full distro userland: packages, compilers, headers | The userbox (Flutter through `fvm`), or `distrobox create --image fedora:latest` |
 | **Flatpak** | Sandboxed GUI apps | `flatpak install --user flathub org.gnome.Evince` |
-| **Distrobox** | CLI tools, dev toolchains, language runtimes | Userbox (see below), or `distrobox create --image fedora:latest` |
-| **Native installer** | Vendor-provided self-updating CLIs | `claude install` to `~/.local/bin` |
+
+`ujust setup-user` installs the per-user tools and assembles the userbox.
 
 ujust recipes are baked into the system image (`/usr/share/ublue-os/just/`). They update when the OS image updates via bootc. Run `ujust --list` to see available recipes.
 
