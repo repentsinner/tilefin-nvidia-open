@@ -2,6 +2,13 @@
 FROM scratch AS ctx
 COPY build_files /
 
+# Looking Glass client, built without host-CPU tuning (§spec:looking-glass-client).
+# The Fedora release matches the base image's, so the binary links against the
+# same library versions the image ships; move both together.
+FROM registry.fedoraproject.org/fedora:44 AS looking-glass
+RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
+    /ctx/looking-glass-build.sh
+
 # Base Image: Universal Blue base with Nvidia open kernel modules
 # Tracks :latest (current Fedora), not :gts (Fedora N-1). The hyprland
 # ecosystem COPRs that supply hyprlock and hypridle stopped building for
@@ -12,6 +19,8 @@ FROM ghcr.io/ublue-os/base-nvidia:latest
 ### MODIFICATIONS
 ## make modifications desired in your image and install packages by modifying the build.sh script
 ## the following RUN directive does all the things required to run "build.sh" as recommended.
+
+COPY --from=looking-glass /out/ /
 
 RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=cache,dst=/var/cache \

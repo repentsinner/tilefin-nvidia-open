@@ -108,6 +108,10 @@ binds {
     Mod+Return { spawn "ptyxis"; }
     Mod+D { spawn "fuzzel"; }
     Mod+Escape { spawn "fuzzel"; }
+    // Take shortcuts back from a client that grabbed the keyboard: Looking
+    // Glass in capture mode, a VM viewer, a remote desktop. No client can
+    // inhibit it (§spec:keyboard-grab-escape).
+    Mod+Shift+Escape allow-inhibiting=false { toggle-keyboard-shortcuts-inhibit; }
     Mod+E { spawn "thunar"; }
     Mod+Period { spawn "rofimoji" "--selector" "fuzzel" "--clipboarder" "wl-copy"; }  // Emoji picker
     Mod+L { spawn "sh" "-c" "pidof hyprlock || hyprlock"; }  // Lock screen
@@ -239,3 +243,7 @@ cursor {
     xcursor-theme "Adwaita"
     xcursor-size 24
 }
+
+// Per-machine GPU passthrough settings, written by ujust setup-gpu-passthrough
+// (§spec:passthrough-desktop-gpu). Absent on machines without a designation.
+include optional=true "/etc/niri/gpu-passthrough.kdl"

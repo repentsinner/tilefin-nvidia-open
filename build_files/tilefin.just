@@ -403,3 +403,194 @@ vm action="status" *args:
             exit 1
             ;;
     esac
+
+# Prepare this machine to pass its NVIDIA GPU to a VM, and report what remains
+[group('Virtualization')]
+setup-gpu-passthrough:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # §spec:passthrough-setup. Overridable so test/setup-gpu-passthrough.test.sh
+    # runs against fakes.
+    SYSFS="${TILEFIN_SYSFS:-/sys}"
+    CPUINFO="${TILEFIN_CPUINFO:-/proc/cpuinfo}"
+    ETC="${TILEFIN_ETC:-/etc}"
+    ASSUME_YES="${TILEFIN_ASSUME_YES:-}"
+    VIRSH=(virsh --connect qemu:///system)
+    NVIDIA_VENDOR="0x10de"
+    WORKSPACE="vm"
+    MIB=$((1024 * 1024))
+
+    INTERACTIVE=false
+    [ -t 0 ] && INTERACTIVE=true
+    # Every change waits for the operator. Without a terminal nothing is asked,
+    # so nothing changes and the recipe only reports.
+    confirm() {
+        [ -n "$ASSUME_YES" ] && return 0
+        [ "$INTERACTIVE" = true ] && gum confirm "$1"
+    }
+
+    # --- GPUs: the NVIDIA one goes to the guest, another drives the desktop.
+    PASS=(); DESK=()
+    for dev in "$SYSFS"/bus/pci/devices/*; do
+        [[ "$(cat "$dev/class")" == 0x03* ]] || continue
+        if [ "$(cat "$dev/vendor")" = "$NVIDIA_VENDOR" ]; then
+            PASS+=("$(basename "$dev")")
+        else
+            DESK+=("$(basename "$dev")")
+        fi
+    done
+    if [ "${#PASS[@]}" -ne 1 ]; then
+        echo "Passthrough handles exactly one NVIDIA GPU; found ${#PASS[@]}." >&2
+        exit 1
+    fi
+    if [ "${#DESK[@]}" -eq 0 ]; then
+        echo "No other GPU can drive the desktop while the NVIDIA GPU is in a VM." >&2
+        echo "Enable the integrated GPU in the firmware, then run this again." >&2
+        exit 1
+    fi
+    PT="${PASS[0]}"
+    DT="${DESK[0]}"
+    echo "GPU to pass through: ${PT}"
+    echo "Desktop GPU:         ${DT}"
+
+    # --- Boot GPU: it owns the console and the greeter.
+    if [ "$(cat "$SYSFS/bus/pci/devices/$DT/boot_vga" 2>/dev/null)" != "1" ]; then
+        echo ""
+        echo "The boot GPU is not the desktop GPU, so the console and greeter appear on"
+        echo "the GPU the VM takes. Set the integrated GPU as primary in the firmware"
+        echo "(on MSI boards: Initiate Graphic Adapter = IGD)."
+    fi
+
+    # --- IOMMU group: the guest takes the whole group.
+    if [ ! -e "$SYSFS/bus/pci/devices/$PT/iommu_group" ]; then
+        echo "The IOMMU is off, so no device can be passed through." >&2
+        exit 1
+    fi
+    GROUP="$(basename "$(readlink "$SYSFS/bus/pci/devices/$PT/iommu_group")")"
+    MEMBERS=(); FOREIGN=()
+    for m in "$SYSFS/kernel/iommu_groups/$GROUP/devices"/*; do
+        m="$(basename "$m")"
+        MEMBERS+=("$m")
+        [ "${m%.*}" = "${PT%.*}" ] || FOREIGN+=("$m")
+    done
+    if [ "${#FOREIGN[@]}" -gt 0 ]; then
+        echo "IOMMU group ${GROUP} also holds ${FOREIGN[*]}, which would go to the VM" >&2
+        echo "with the GPU. Refusing; a different slot may give the GPU a group of its own." >&2
+        exit 1
+    fi
+    echo "IOMMU group ${GROUP}: ${MEMBERS[*]}"
+
+    # --- Guest address width (§spec:guest-address-width).
+    MGAW=""
+    for cap in "$SYSFS"/class/iommu/dmar*/intel-iommu/cap; do
+        [ -e "$cap" ] || continue
+        w=$(( ((0x$(cat "$cap") >> 16) & 0x3f) + 1 ))
+        if [ -z "$MGAW" ] || [ "$w" -lt "$MGAW" ]; then MGAW=$w; fi
+    done
+    PHYS="$(grep -m1 'address sizes' "$CPUINFO" | grep -oE '[0-9]+ bits physical' | grep -oE '^[0-9]+' || true)"
+    LARGEST_BAR=0
+    while read -r start end _; do
+        size=$(( end - start + 1 ))
+        [ "$(( start ))" -ne 0 ] && [ "$size" -gt "$LARGEST_BAR" ] && LARGEST_BAR=$size
+    done < "$SYSFS/bus/pci/devices/$PT/resource"
+    # OVMF's 64-bit window must hold the largest BAR at its own alignment, so
+    # give it twice that, rounded up to a power of two.
+    WINDOW_MIB=1
+    while [ "$WINDOW_MIB" -lt $(( 2 * LARGEST_BAR / MIB )) ]; do WINDOW_MIB=$(( WINDOW_MIB * 2 )); done
+    NEED_GUEST=false
+    if [ -n "$MGAW" ] && [ -n "$PHYS" ] && [ "$MGAW" -lt "$PHYS" ]; then
+        NEED_GUEST=true
+        echo ""
+        echo "The IOMMU addresses ${MGAW} bits and the CPU ${PHYS}. A guest that passes this"
+        echo "GPU through needs, in its libvirt definition:"
+        echo "  <cpu ...><maxphysaddr mode='passthrough' limit='${MGAW}'/></cpu>"
+        echo "  <qemu:commandline> -fw_cfg name=opt/ovmf/X-PciMmio64Mb,string=${WINDOW_MIB}"
+    fi
+
+    if [ -z "$ASSUME_YES" ] && [ "$INTERACTIVE" = false ]; then
+        echo ""
+        echo "Run this from a terminal to apply changes; nothing was changed."
+        exit 0
+    fi
+    echo ""
+
+    # --- Designation (§spec:passthrough-desktop-gpu).
+    if confirm "Keep the desktop on ${DT} and reserve ${PT} for VMs?"; then
+        sudo install -d -m 755 "$ETC/tilefin" "$ETC/niri"
+        printf 'PASSTHROUGH_GPU=%s\nDESKTOP_GPU=%s\n' "$PT" "$DT" \
+            | sudo tee "$ETC/tilefin/gpu-passthrough.conf" >/dev/null
+        printf '%s\n' \
+            "// Written by ujust setup-gpu-passthrough (§spec:passthrough-desktop-gpu)." \
+            "debug {" \
+            "    render-drm-device \"/dev/dri/by-path/pci-${DT}-render\"" \
+            "    ignore-drm-device \"/dev/dri/by-path/pci-${PT}-render\"" \
+            "}" \
+            "" \
+            "// Looking Glass opens fullscreen on its own workspace (§spec:looking-glass-workspace)." \
+            "workspace \"${WORKSPACE}\"" \
+            "window-rule {" \
+            "    match app-id=r#\"^looking-glass-client\$\"#" \
+            "    open-on-workspace \"${WORKSPACE}\"" \
+            "    open-fullscreen true" \
+            "    open-focused true" \
+            "}" \
+            "binds {" \
+            "    Mod+Grave { focus-workspace \"${WORKSPACE}\"; }" \
+            "}" \
+            | sudo tee "$ETC/niri/gpu-passthrough.kdl" >/dev/null
+        echo "Wrote $ETC/tilefin/gpu-passthrough.conf and $ETC/niri/gpu-passthrough.kdl."
+    fi
+
+    # nvidia-persistenced holds the GPU open, which blocks the handover; the
+    # hook manages no services (§spec:gpu-handover).
+    if confirm "Disable nvidia-persistenced, which holds the GPU open?"; then
+        sudo systemctl disable --now nvidia-persistenced.service
+    fi
+
+    if confirm "Add ${USER} to the looking-glass group?"; then
+        sudo usermod -aG looking-glass "$USER"
+    fi
+
+    if [ "$NEED_GUEST" = true ]; then
+        VM="${TILEFIN_VM:-}"
+        if [ -z "$VM" ] && [ "$INTERACTIVE" = true ]; then
+            mapfile -t VMS < <("${VIRSH[@]}" list --all --name | sed '/^$/d')
+            [ "${#VMS[@]}" -gt 0 ] && VM=$(gum choose --header="Apply the guest settings to which VM?" "${VMS[@]}" "None")
+        fi
+        if [ -n "$VM" ] && [ "$VM" != "None" ] && confirm "Apply the address-width settings to ${VM}?"; then
+            XML="$(mktemp)"
+            "${VIRSH[@]}" dumpxml --inactive "$VM" | python3 -I -c '
+    import sys, xml.etree.ElementTree as ET
+    NS = "http://libvirt.org/schemas/domain/qemu/1.0"
+    CL, ARG = "{" + NS + "}commandline", "{" + NS + "}arg"
+    ET.register_namespace("qemu", NS)
+    limit, window = sys.argv[1], sys.argv[2]
+    root = ET.parse(sys.stdin).getroot()
+    cpu = root.find("cpu")
+    if cpu is None:
+        cpu = ET.SubElement(root, "cpu", {"mode": "host-passthrough"})
+    for old in cpu.findall("maxphysaddr"):
+        cpu.remove(old)
+    ET.SubElement(cpu, "maxphysaddr", {"mode": "passthrough", "limit": limit})
+    cl = root.find(CL)
+    if cl is None:
+        cl = ET.SubElement(root, CL)
+    args = list(cl)
+    for i, a in enumerate(args):
+        if "X-PciMmio64Mb" in a.get("value", ""):
+            cl.remove(a)
+            if i and args[i - 1].get("value") == "-fw_cfg":
+                cl.remove(args[i - 1])
+    for v in ("-fw_cfg", "name=opt/ovmf/X-PciMmio64Mb,string=" + window):
+        ET.SubElement(cl, ARG, {"value": v})
+    ET.ElementTree(root).write(sys.stdout, encoding="unicode")
+    ' "$MGAW" "$WINDOW_MIB" > "$XML"
+            "${VIRSH[@]}" define "$XML" >/dev/null
+            rm -f "$XML"
+            echo "Updated ${VM}; the settings apply from its next start."
+        fi
+    fi
+
+    echo ""
+    echo "Log out and back in for the desktop and group changes to take effect."

@@ -1,0 +1,15 @@
+; SELinux policy for GPU passthrough to a local VM (§spec:gpu-passthrough).
+
+; §spec:passthrough-selinux-labels: confined QEMU (svirt_t) opens Looking
+; Glass's shared memory. A guest's MCS categories dominate s0, so every guest
+; and the unconfined client can open the same file.
+(filecon "/dev/shm/looking-glass" file (system_u object_r svirt_tmpfs_t ((s0) (s0))))
+
+; §spec:gpu-handover: libvirt runs hooks in virtqemud's domain. modprobe from
+; the handover hook transitions to kmod_t, the domain the policy already gives
+; module loading, rather than granting virtqemud_t module loading itself.
+(typetransition virtqemud_t kmod_exec_t process kmod_t)
+(allow virtqemud_t kmod_exec_t (file (execute open read getattr map)))
+(allow virtqemud_t kmod_t (process (transition)))
+(allow kmod_t virtqemud_t (fd (use)))
+(allow kmod_t virtqemud_t (fifo_file (read write getattr ioctl)))

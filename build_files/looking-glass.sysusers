@@ -1,0 +1,5 @@
+# Owner of the Looking Glass shared memory, /dev/shm/looking-glass
+# (§spec:passthrough-selinux-labels). QEMU writes frames into it; users who run
+# the client join the group through ujust setup-gpu-passthrough.
+g looking-glass -
+m qemu looking-glass

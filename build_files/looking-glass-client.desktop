@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Looking Glass
+GenericName=VM Display Client
+Comment=Show a local VM's passed-through GPU output in a window
+Exec=looking-glass-client
+Icon=looking-glass-client
+Terminal=false
+Categories=System;Emulator;
+Keywords=VM;KVM;VFIO;passthrough;IVSHMEM;
+StartupWMClass=looking-glass-client

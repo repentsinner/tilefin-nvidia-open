@@ -1,0 +1,105 @@
+#!/bin/bash
+# libvirt qemu hook (§spec:gpu-handover): release the host's NVIDIA GPU before
+# a guest that passes it through starts, and give it back after that guest
+# stops. Installed as /etc/libvirt/hooks/qemu.d/50-nvidia-handover.
+#
+# libvirt calls it as: <script> <domain> <operation> <sub-operation> <extra>,
+# with the domain XML on stdin, and runs it in virtqemud's SELinux domain. It
+# must never call virsh, which deadlocks the daemon.
+#
+# libvirt itself moves each <hostdev managed='yes'> device to vfio-pci after
+# "prepare" and back after "release". This hook only makes that possible by
+# unloading the NVIDIA modules, which fails while anything holds the GPU.
+# Unloading takes every NVIDIA GPU from the host: one NVIDIA GPU per host.
+#
+# The hook manages no services. Calling systemctl from virtqemud's domain needs
+# rights the policy does not grant, so nvidia-persistenced, which holds the GPU
+# open, is disabled on passthrough machines instead (§spec:passthrough-setup).
+set -euo pipefail
+
+readonly DOMAIN="$1"
+readonly OPERATION="$2"
+readonly SUB_OPERATION="$3"
+# Overridable so test/nvidia-handover.test.sh runs against fakes.
+readonly SYSFS="${TILEFIN_SYSFS:-/sys}"
+readonly PROC="${TILEFIN_PROC:-/proc}"
+readonly STATE_DIR="${TILEFIN_HANDOVER_STATE_DIR:-/run/libvirt/nvidia-handover}"
+readonly STATE_FILE="$STATE_DIR/$DOMAIN"
+readonly UNLOAD_ORDER=(nvidia_drm nvidia_modeset nvidia_uvm nvidia)
+readonly LOG_TAG="nvidia-handover"
+
+log() { logger -t "$LOG_TAG" "domain=$DOMAIN $*"; }
+
+# PCI addresses (0000:01:00.0) of the domain's PCI host devices, from stdin.
+hostdev_addresses() {
+    python3 -I -c '
+import sys, xml.etree.ElementTree as ET
+root = ET.parse(sys.stdin).getroot()
+for hd in root.iterfind("./devices/hostdev[@type=\"pci\"]"):
+    a = hd.find("./source/address")
+    if a is None:
+        continue
+    print("%04x:%02x:%02x.%x" % tuple(int(a.get(k), 16) for k in ("domain", "bus", "slot", "function")))
+'
+}
+
+# Processes holding an NVIDIA device node, as "pid comm" lines. Only runs after
+# a release has failed, so a normal start reads no other process's /proc. Under
+# a policy that denies those reads it lists nothing, and the refusal stands.
+nvidia_users() {
+    local fd pid
+    for fd in "$PROC"/[0-9]*/fd/*; do
+        [[ "$(readlink "$fd" 2>/dev/null)" == /dev/nvidia* ]] || continue
+        pid="${fd#"$PROC"/}"; pid="${pid%%/*}"
+        echo "$pid $(cat "$PROC/$pid/comm" 2>/dev/null || echo '?')"
+    done | sort -un
+}
+
+load_modules() {
+    # nvidia_drm pulls in nvidia and nvidia_modeset; loading nvidia binds the
+    # GPU libvirt has just handed back from vfio-pci.
+    modprobe nvidia_drm
+    modprobe nvidia_uvm
+}
+
+release_gpu() {
+    local addr driver passes_nvidia=false users
+    for addr in $(hostdev_addresses); do
+        driver="$(basename "$(readlink "$SYSFS/bus/pci/devices/$addr/driver" 2>/dev/null)" 2>/dev/null || true)"
+        [ "$driver" = "nvidia" ] && passes_nvidia=true
+    done
+    [ "$passes_nvidia" = true ] || exit 0
+
+    if modprobe -r "${UNLOAD_ORDER[@]}" 2>/dev/null; then
+        mkdir -p "$STATE_DIR"
+        : > "$STATE_FILE"
+        log "event=released"
+        return
+    fi
+
+    # modprobe -r stops at the first busy module and leaves the earlier ones
+    # unloaded; reload them so a refused start leaves the host as it was.
+    users="$(nvidia_users)"
+    load_modules || true
+    log "event=refused reason=gpu-in-use users=$(echo "$users" | paste -sd, -)"
+    echo "The NVIDIA GPU is in use on the host, so the VM cannot take it." >&2
+    if [ -n "$users" ]; then
+        echo "Quit these processes, then start the VM again:" >&2
+        echo "$users" >&2
+    else
+        echo "Quit whatever uses the GPU (CUDA jobs, GPU apps), then start the VM again." >&2
+    fi
+    exit 1
+}
+
+restore_gpu() {
+    [ -e "$STATE_FILE" ] || exit 0
+    load_modules
+    rm -f "$STATE_FILE"
+    log "event=restored"
+}
+
+case "$OPERATION/$SUB_OPERATION" in
+    prepare/begin) release_gpu ;;
+    release/end)   restore_gpu ;;
+esac

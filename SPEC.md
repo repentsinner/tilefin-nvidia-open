@@ -162,7 +162,7 @@ GPU passthrough support:
 
 ## GPU passthrough to a local VM §spec:gpu-passthrough
 
-*Status: in progress*
+*Status: complete*
 
 ### Problem
 
@@ -223,16 +223,17 @@ each managed host device to `vfio-pci` and back; the hook only makes the
 GPU releasable.
 
 - Before a guest starts, when the guest passes through a device the
-  `nvidia` driver owns, the hook shall stop `nvidia-persistenced` and
-  unload the NVIDIA kernel modules.
-- When any process other than `nvidia-persistenced` holds an NVIDIA
-  device node, the hook shall refuse the start, name the processes in
-  the error libvirt reports, and leave the GPU with the host.
+  `nvidia` driver owns, the hook shall unload the NVIDIA kernel modules.
+- When a process holds an NVIDIA device node, so that the modules cannot
+  unload, the hook shall refuse the start, name the holding processes in
+  the error libvirt reports where it can read them, and leave the GPU
+  with the host.
 - When the release fails partway, the hook shall restore the host state
   before it reports the failure, so a failed start never strands the GPU
   unbound.
 - After a guest that took the GPU stops, the hook shall load the NVIDIA
-  modules and restart `nvidia-persistenced` if it was running.
+  modules.
+- The hook shall manage no services.
 - For a guest without such a device, the hook shall do nothing.
 - Each release, refusal and restore shall produce one log line with the
   domain name in a field.
@@ -247,12 +248,24 @@ two needs per-device unbinding, which this section does not cover.
 applications. A start that fails with their names is recoverable; a
 start that kills them is not.
 
-The hook shall work with `virtqemud_t` enforcing. libvirt runs hooks in
-the daemon's domain, and that domain runs permissive on Fedora 44, which
-lets `systemctl` and `modprobe` succeed while logging denials. A hook
-that depends on that permissiveness breaks silently the day the policy
-tightens. The image therefore either carries policy that grants exactly
-these operations or performs them outside the daemon's domain.
+*Why release first and look for holders only on failure*: a successful
+unload proves nothing holds the GPU, so a normal start reads no other
+process's `/proc`. Scanning every process on every start touched every
+SELinux domain on the host and logged a denial for each.
+
+*SELinux*: libvirt runs hooks in the daemon's domain, `virtqemud_t`,
+which runs permissive on Fedora 44. Fedora's policy does not yet let that
+domain execute a hook at all, so no hook works there enforcing until
+Fedora extends the policy, and the image does not try to grant hook
+execution itself. What the image does constrain is its own hook's
+privileged work. `modprobe` from the hook transitions to `kmod_t`, the
+domain the policy already gives module loading, instead of the daemon
+domain gaining module loading. Managing `nvidia-persistenced` from the
+daemon would need rights to start and stop systemd units, so the hook
+leaves services alone and §spec:passthrough-setup disables
+`nvidia-persistenced` on passthrough machines. The holder scan reads
+other processes' `/proc` only on the refusal path; where policy denies
+those reads, the refusal stands without names.
 
 #### Looking Glass client §spec:looking-glass-client
 
@@ -370,8 +383,12 @@ image binds Mod+Escape to the launcher.
 
 #### Looking Glass workspace §spec:looking-glass-workspace
 
-The Looking Glass client shall open fullscreen and focused on a named
-workspace, with a bind to reach it.
+On a machine with a passthrough designation, the Looking Glass client
+shall open fullscreen and focused on a named workspace, with a bind to
+reach it. The workspace, rule and bind travel in the per-machine niri
+include (§spec:passthrough-desktop-gpu), because niri keeps a named
+workspace even while it is empty, and machines that never run a guest
+should not carry one.
 
 *Why*: Looking Glass scales and letterboxes the guest's picture; it does
 not resize the guest, whose resolution follows the display attached to
@@ -394,6 +411,8 @@ remains. It shall:
   functions.
 - Write the passthrough designation (§spec:passthrough-desktop-gpu) on
   confirmation.
+- Disable `nvidia-persistenced` on confirmation. It holds the NVIDIA
+  device open, which blocks the handover (§spec:gpu-handover).
 - Add the invoking user to the `looking-glass` group, which owns the
   shared-memory file.
 - Compare the IOMMU's address width with the CPU's, and when it is
@@ -402,6 +421,12 @@ remains. It shall:
 
 The recipe shall never reboot and shall change nothing the operator has
 not confirmed. Its changes take effect at the next login.
+
+*Cost of disabling nvidia-persistenced*: persistence mode keeps the
+driver's GPU state initialised while no client holds the GPU. Without it
+the first CUDA client after an idle period waits for the driver to bring
+the GPU up. On a passthrough machine the GPU leaves the host whenever a
+guest runs, so the state persistence keeps does not survive that anyway.
 
 #### VM power recipe §spec:vm-power-recipe
 
@@ -436,7 +461,11 @@ started from virt-manager or `virsh` behaves the same way.
   so the README documents a procedure (UEFI with Secure Boot, emulated
   TPM 2.0, virtio storage and network, managed PCI host devices for the
   GPU's functions, IVSHMEM for Looking Glass, no emulated display once
-  Looking Glass works) instead of a recipe.
+  Looking Glass works) instead of a recipe. The procedure also documents
+  regaining control when Looking Glass is unavailable: a monitor cabled
+  to the passed-through GPU shows the guest but carries no input, and
+  input reaches the guest only through SPICE, so recovery restores an
+  emulated display for virt-manager's console and restarts the guest.
 - *A 3Dconnexion SpaceMouse in the guest without a dedicated receiver.*
   3Dconnexion's receiver presents every paired device as one USB device,
   and USB passthrough moves whole devices, so a SpaceMouse paired with a
@@ -956,7 +985,7 @@ login-ready state on first boot without a manual `systemctl enable`.
 
 ## Dynamic GPU detection for hybrid Intel+Nvidia systems §spec:gpu-detection
 
-*Status: in progress*
+*Status: complete*
 
 Where an Intel iGPU drives the display and the Nvidia GPU is reserved
 for CUDA or PCI passthrough (§spec:virtualization), Nvidia rendering
