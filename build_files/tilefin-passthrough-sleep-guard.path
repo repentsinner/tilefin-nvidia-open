@@ -1,0 +1,11 @@
+# Start the sleep guard whenever a guest holds the passed-through GPU
+# (§spec:passthrough-host-power). The handover hook writes one marker per such
+# guest; the path unit re-arms when the guard exits.
+[Unit]
+Description=Watch for a VM holding the passed-through GPU
+
+[Path]
+PathExistsGlob=/run/libvirt/nvidia-handover/*
+
+[Install]
+WantedBy=multi-user.target

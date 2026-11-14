@@ -470,6 +470,16 @@ semodule -n -i /ctx/tilefin-passthrough.cil
 # the client defaults come from here (§spec:looking-glass-client).
 install -Dm644 /ctx/looking-glass-client.desktop /usr/share/applications/looking-glass-client.desktop
 install -Dm644 /ctx/looking-glass-client.ini /etc/looking-glass-client.ini
+# Host sleep waits while a guest holds the GPU, and host shutdown shuts guests
+# down cleanly (§spec:passthrough-host-power). The guard holds a sleep
+# inhibitor while the handover hook's markers exist; libvirt-guests shuts
+# every running guest down, passthrough or not, before libvirt stops.
+install -Dm755 /ctx/passthrough-sleep-guard.sh /usr/share/tilefin/scripts/passthrough-sleep-guard.sh
+install -Dm644 /ctx/tilefin-passthrough-sleep-guard.path /usr/lib/systemd/system/tilefin-passthrough-sleep-guard.path
+install -Dm644 /ctx/tilefin-passthrough-sleep-guard.service /usr/lib/systemd/system/tilefin-passthrough-sleep-guard.service
+systemctl enable tilefin-passthrough-sleep-guard.path
+install -Dm644 /ctx/libvirt-guests.sysconfig /etc/sysconfig/libvirt-guests
+systemctl enable libvirt-guests.service
 
 # Raise memlock limit for GPU/RDMA workloads (nvidia_p2p_get_pages,
 # ibv_reg_mr). Applies to all users in wheel group.

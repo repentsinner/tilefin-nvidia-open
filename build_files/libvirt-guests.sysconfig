@@ -1,0 +1,18 @@
+# libvirt-guests settings (§spec:passthrough-host-power), sourced by
+# /usr/libexec/libvirt-guests.sh. Only values that differ from its defaults.
+
+# The system connection holds the guests that pass host devices through.
+URIS=qemu:///system
+
+# On host shutdown, ask each running guest to shut down (an ACPI power-button
+# press) and wait for it. The default, suspend, saves the guest's memory to
+# disk, which libvirt refuses for a guest with a passed-through device.
+ON_SHUTDOWN=shutdown
+
+# Windows can spend minutes finishing updates on its way down. Past this, the
+# host stops waiting and the guest is powered off, so shutdown never hangs.
+SHUTDOWN_TIMEOUT=300
+
+# Do not start guests at boot: a passthrough guest takes the GPU from the host
+# the moment it starts, which belongs to the operator's choice.
+ON_BOOT=ignore
