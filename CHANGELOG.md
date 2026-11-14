@@ -1,3 +1,11 @@
+# [0.11.0](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.10.0...v0.11.0) (2026-11-14)
+
+
+### Features
+
+* **image:** build Looking Glass B7 and hand the NVIDIA GPU to guests ([b770fa2](https://github.com/repentsinner/tilefin-nvidia-open/commit/b770fa2e49e4b5c4695ebb083e7628780160d349))
+* **session:** keep the desktop off a designated passthrough GPU ([bd6b0c3](https://github.com/repentsinner/tilefin-nvidia-open/commit/bd6b0c34834b93d2a65f9047af2fb0e1d0528ea4))
+
 # [0.10.0](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.9.0...v0.10.0) (2026-11-14)
 
 
