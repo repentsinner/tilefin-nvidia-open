@@ -1,3 +1,10 @@
+# [0.9.0](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.8.0...v0.9.0) (2026-11-14)
+
+
+### Features
+
+* **iommu:** restore iommu=pt for peer-to-peer DMA into GPU memory ([ec0802c](https://github.com/repentsinner/tilefin-nvidia-open/commit/ec0802cf357a5fac45186d9bc2733fe110b031f2))
+
 # [0.8.0](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.7.0...v0.8.0) (2026-09-02)
 
 
