@@ -184,6 +184,21 @@ on demand. To resume automatic updates:
 ujust production-mode --stop
 ```
 
+### Virtual machines
+
+To start, stop, or check a VM without opening virt-manager:
+
+```bash
+ujust vm start
+ujust vm stop
+ujust vm status
+```
+
+`stop` asks the guest to shut down and waits for it, so the guest can save
+its work. If a guest hangs instead of shutting down, power it off with
+`ujust vm stop --force`. When more than one VM is defined, add its name,
+for example `ujust vm start win11`.
+
 ### Niri
 
 Customize by editing `~/.config/niri/config.kdl`. See the [Niri wiki](https://github.com/YaLTeR/niri/wiki) for configuration options.

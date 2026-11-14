@@ -297,3 +297,109 @@ hot-development mode="--start":
             exit 1
             ;;
     esac
+
+# Start, stop, or show a libvirt VM (start | stop [--force] | status) [name]
+[group('Virtualization')]
+[positional-arguments]
+vm action="status" *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # §spec:vm-power-recipe. The system connection is where VMs that pass a
+    # host device through live; the session connection cannot hold them.
+    VIRSH=(virsh --connect qemu:///system)
+    # Windows can take a minute or more to finish shutting down, longer while
+    # it installs updates. Past this, the recipe stops waiting, never forcing.
+    SHUTDOWN_TIMEOUT="${TILEFIN_VM_SHUTDOWN_TIMEOUT:-120}"
+    POLL_INTERVAL="${TILEFIN_VM_POLL_INTERVAL:-2}"
+
+    usage() {
+        echo "Usage: ujust vm [status | start | stop [--force]] [name]"
+        echo ""
+        echo "  status         Show the VM's state (the default)."
+        echo "  start          Start the VM."
+        echo "  stop           Ask the guest to shut down, and wait for it."
+        echo "  stop --force   Power the VM off at once, without asking the guest."
+        echo ""
+        echo "  name           Needed only when more than one VM is defined."
+    }
+
+    ACTION="${1:-status}"
+    shift || true
+    NAME=""
+    FORCE=false
+    for arg in "$@"; do
+        case "$arg" in
+            --force) FORCE=true ;;
+            -*) usage; exit 1 ;;
+            *) NAME="$arg" ;;
+        esac
+    done
+    case "$ACTION" in
+        status|start|stop) ;;
+        *) usage; exit 1 ;;
+    esac
+
+    mapfile -t VMS < <("${VIRSH[@]}" list --all --name | sed '/^$/d')
+    if [ -n "$NAME" ]; then
+        if ! "${VIRSH[@]}" dominfo "$NAME" >/dev/null 2>&1; then
+            echo "No VM named ${NAME}. Defined VMs: ${VMS[*]:-none}" >&2
+            exit 1
+        fi
+    elif [ "${#VMS[@]}" -eq 0 ]; then
+        echo "No VMs are defined. Create one with virt-manager." >&2
+        exit 1
+    elif [ "${#VMS[@]}" -eq 1 ]; then
+        NAME="${VMS[0]}"
+    elif [ -t 0 ]; then
+        NAME=$(gum choose --header="Which VM?" "${VMS[@]}")
+    else
+        echo "More than one VM is defined; name one: ${VMS[*]}" >&2
+        echo "Example: ujust vm ${ACTION} ${VMS[0]}" >&2
+        exit 1
+    fi
+
+    state() { "${VIRSH[@]}" domstate "$NAME" 2>/dev/null | sed '/^$/d'; }
+
+    case "$ACTION" in
+        status)
+            echo "${NAME}: $(state)"
+            ;;
+        start)
+            if [ "$(state)" = "running" ]; then
+                echo "${NAME} is already running."
+                exit 0
+            fi
+            # A refusal, such as the GPU handover naming processes that hold
+            # the GPU (§spec:gpu-handover), arrives as virsh's own error.
+            "${VIRSH[@]}" start "$NAME" >/dev/null
+            echo "Started ${NAME}."
+            if "${VIRSH[@]}" dumpxml "$NAME" | grep -q "<shmem name=['\"]looking-glass['\"]"; then
+                echo "Open Looking Glass once the guest has booted."
+            fi
+            ;;
+        stop)
+            if [ "$(state)" != "running" ]; then
+                echo "${NAME} is not running."
+                exit 0
+            fi
+            if [ "$FORCE" = true ]; then
+                "${VIRSH[@]}" destroy "$NAME" >/dev/null
+                echo "${NAME} is powered off."
+                exit 0
+            fi
+            "${VIRSH[@]}" shutdown "$NAME" >/dev/null
+            echo "Asked ${NAME} to shut down; waiting up to ${SHUTDOWN_TIMEOUT} s..."
+            deadline=$(( SECONDS + SHUTDOWN_TIMEOUT ))
+            while [ "$SECONDS" -lt "$deadline" ]; do
+                if [ "$(state)" != "running" ]; then
+                    echo "${NAME} has shut down."
+                    exit 0
+                fi
+                sleep "$POLL_INTERVAL"
+            done
+            echo "${NAME} did not shut down within ${SHUTDOWN_TIMEOUT} s." >&2
+            echo "If the guest is stuck, power it off with: ujust vm stop --force ${NAME}" >&2
+            exit 1
+            ;;
+    esac
