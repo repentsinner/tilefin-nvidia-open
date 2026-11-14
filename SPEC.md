@@ -1378,6 +1378,143 @@ NIC PHC from an external grandmaster rather than electing one.
 The image contains `/usr/sbin/ptp4l` and `/usr/sbin/phc2sys`, with
 `ptp4l.service` and `phc2sys.service` present but disabled.
 
+## Media CPU partition §spec:media-cpu-partition
+
+*Status: not started*
+
+### Problem
+
+A paced ST 2110 sender busy-polls one core and releases each packet at a
+scheduled time. An interrupt on that core delays every packet behind it.
+Interrupts follow the default affinity, which covers every CPU, so any
+device's interrupt can land on the sender's core.
+
+On molecule, the GPU's interrupt landed on the core a paced sender polled
+on, and frames left 58–241 µs late. On a core with no busy interrupt, the
+same sender met the ST 2110-21 narrow sender model (2110TPN) in 4 of 8
+runs, against 1 of 8 on the shared core. Fixing it by hand meant writing
+affinity masks by IRQ number. IRQ numbers fall out of probe order, so the
+fix did not survive a reboot or a kernel update.
+
+### Design
+
+The image carries the mechanism, and the machine carries the choice. No
+core number or IRQ number appears in the image. Each machine holds a
+partition of its CPUs into a housekeeping set and an isolated set, stored
+as local kernel arguments. Pacing-critical threads pin themselves to the
+isolated set; the image pins no process.
+
+The partition takes four kernel arguments, each documented in the
+kernel's `admin-guide/kernel-parameters` and `admin-guide/cpu-isolation`:
+
+| Argument | Effect on the isolated set |
+| --- | --- |
+| `irqaffinity=<housekeeping>` | Default affinity of every IRQ allocated after boot excludes it |
+| `isolcpus=managed_irq,domain,<isolated>` | Managed IRQs avoid it where their mask allows; the scheduler leaves it out of load balancing, and unbound workqueues stay off it |
+| `nohz_full=<isolated>` | The tick stops while one task runs |
+| `rcu_nocbs=<isolated>` | RCU callbacks run on housekeeping CPUs |
+
+`nohz_full` already implies `rcu_nocbs` for the same CPUs. The partition
+writes both so the command line names each mechanism it relies on.
+Fedora's kernel builds with `CONFIG_CPU_ISOLATION`, `CONFIG_NO_HZ_FULL`
+and `CONFIG_RCU_NOCB_CPU`, which these arguments need (checked on
+7.1.12-200.fc44).
+
+*Why kernel arguments*: `nohz_full` and the `managed_irq` flag bind only
+at boot, so the partition costs a reboot whatever else carries it.
+Putting scheduler isolation in the same `isolcpus` argument adds nothing
+to that cost.
+
+*Rejected: a cgroup v2 cpuset isolated partition* for scheduler
+isolation. `cpu-isolation.rst` recommends it over `isolcpus=domain`
+because it can change at runtime. Here the partition changes when the
+hardware does, and the reboot for `nohz_full` comes anyway. A cpuset
+partition would also need a unit to rebuild it on every boot and an owner
+for the cgroup the media threads join.
+
+*Cost*: the isolated cores leave the general pool, so builds and other
+parallel work lose them. On the isolated set, `nohz_full` makes every
+kernel entry and exit more expensive, and the kernel documentation asks
+for one task per isolated CPU and no kernel calls in the hot path.
+A paced sender posting to a kernel-bypass send queue meets that; a thread
+that makes syscalls per packet does not. `domain` isolation lasts until
+the next boot.
+
+#### Partition derivation §spec:media-cores-partition
+
+`ujust media-cores` derives a partition from topology and prints it with
+the kernel arguments it implies. It applies them only after the operator
+confirms, and it never reboots. Deriving from sysfs keeps core numbers
+out of the image and out of the operator's head.
+
+The operator names an anchor device, a network interface or a PCI
+address of the NIC or GPU the media threads drive, and a count of
+physical cores to isolate. The derivation:
+
+- Starts from the CPUs of the anchor's NUMA node (`numa_node`). A value
+  of `-1` means one node, and every CPU qualifies.
+- Groups those CPUs by shared L3 cache (`cache/index3/shared_cpu_list`)
+  and fills the isolated set with whole L3 groups where the count
+  allows, so isolated threads do not share a cache with housekeeping
+  load.
+- Takes whole physical cores, each with all its SMT siblings
+  (`topology/thread_siblings_list`). A paced thread then runs on one
+  sibling with the other idle.
+- Keeps CPU 0 and its L3 group in the housekeeping set, because
+  `nohz_full` forces the boot CPU outside the isolated set.
+
+On molecule every device reports one NUMA node, so L3 grouping is the
+only locality signal: eight groups of four cores, eight threads each.
+
+The arguments apply as local kargs through `rpm-ostree kargs`, replacing
+an earlier partition rather than adding a second. Local kargs are machine
+state, and §spec:karg-drift treats them as deliberate. `ujust media-cores
+--remove` deletes them.
+
+#### Boot-time IRQ steering §spec:media-cores-irq-steering
+
+`irqaffinity=` sets the default mask an IRQ gets when it is allocated.
+A driver that sets its own affinity afterwards escapes it, and nothing
+reports the escape.
+
+When the command line carries an isolated set, a oneshot unit shipped by
+the image shall run once late in boot, after the network and GPU drivers
+have probed. It shall write the housekeeping set to every IRQ's
+`smp_affinity_list`. Managed IRQs refuse the write, and the `managed_irq`
+flag already covers them. The unit shall then read each IRQ's
+`effective_affinity_list` and log every IRQ whose effective affinity
+still intersects the isolated set, naming its action from
+`/proc/interrupts`. It shall fail when a movable IRQ still intersects, so
+`systemctl --failed` shows it.
+
+A managed IRQ whose mask holds only isolated CPUs is expected: the kernel
+routes it there, and it fires only for I/O that tasks on those CPUs
+submit. The unit logs it and does not fail.
+
+Without an isolated set, the unit does nothing.
+
+#### irqbalance stays out §spec:media-cores-no-irqbalance
+
+The image ships neither `irqbalance` nor `tuned`. Either would rewrite
+IRQ affinity behind the partition. If one is ever added, it shall be
+configured to ban the isolated set, and `ujust check-media-cores` reports
+it running as a finding.
+
+#### Partition check §spec:media-cores-check
+
+`ujust check-media-cores` reports, and changes nothing:
+
+- The partition arguments on `/proc/cmdline`, and whether
+  `/sys/devices/system/cpu/isolated` and `/sys/devices/system/cpu/nohz_full`
+  match them.
+- Each IRQ whose `effective_affinity_list` intersects the isolated set,
+  with its action and its counts on isolated CPUs from `/proc/interrupts`,
+  marked managed or movable.
+- Whether `irqbalance` or `tuned` is running.
+
+It exits non-zero when a movable IRQ intersects the isolated set, and
+prints that no partition is set when the command line carries none.
+
 ## NVIDIA DRM modesetting §spec:nvidia-drm-modeset
 
 *Status: complete*
@@ -2197,6 +2334,10 @@ One entry is local state:
 `20-verbose-boot.toml`; `build.sh` documents
 `rpm-ostree kargs --delete=quiet --delete=rhgb` as a first-boot step that
 was never run. Harmless, and recorded so the comparison is complete.
+
+A media CPU partition (§spec:media-cpu-partition) adds local arguments on
+purpose. They describe one machine's cores, so they belong to the machine,
+and `ujust check-media-cores` reports them as such.
 
 Compare `rpm-ostree kargs` against `build_files/build.sh` after any
 incident that prompts a configuration change, and treat an unexplained
