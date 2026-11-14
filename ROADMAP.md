@@ -121,3 +121,70 @@ shell. With the Kubernetes clients installed by `setup-user`
 Ready. A throwaway pod resolves `kubernetes.default`. If CoreDNS stays
 `0/1` with the modules loaded, record the new finding under
 §spec:rootless-k8s-enabling before changing the image further.
+
+## Media CPU partition §road:media-cpu-partition
+
+### Derive and apply a partition §road:media-cores-partition-recipe
+
+Add a `ujust media-cores` recipe to `build_files/tilefin.just` that
+derives the housekeeping and isolated sets from an anchor device's
+topology, prints the kernel arguments, and applies them as local kargs
+only on confirmation. No dependencies.
+Files: `build_files/tilefin.just`.
+§spec:media-cores-partition
+
+### Steer IRQs off the isolated set at boot §road:media-cores-irq-unit
+
+Ship and enable a oneshot unit that moves every movable IRQ onto the
+housekeeping set and fails on any that stays on the isolated set.
+Independent of §road:media-cores-partition-recipe; a hand-written
+partition exercises it.
+Files: `build_files/build.sh`, new unit and script under `build_files/`.
+§spec:media-cores-irq-steering §spec:media-cores-no-irqbalance
+
+### Report the partition §road:media-cores-check-recipe
+
+Add a read-only `ujust check-media-cores` recipe to
+`build_files/tilefin.just` that reports the partition, every IRQ whose
+effective affinity intersects the isolated set, and any running
+`irqbalance` or `tuned`. Depends on §road:media-cores-partition-recipe
+for the argument format.
+Files: `build_files/tilefin.just`.
+§spec:media-cores-check
+
+**Verify:** On molecule, run `ujust media-cores` against the ConnectX-6
+Dx, confirm, and reboot. `/sys/devices/system/cpu/isolated` and
+`/sys/devices/system/cpu/nohz_full` match the printed isolated set, the
+steering unit is active rather than failed, and `ujust
+check-media-cores` exits 0 with no movable IRQ on the isolated set. A
+paced ST 2110 sender pinned to an isolated core shows no packet
+departures past the pacing cap caused by host interrupts, and the
+`/proc/interrupts` counts on that core stay flat for the run.
+
+## Per-group IOMMU identity domain §road:iommu-group-identity
+
+### Probe a NIC-only identity domain §road:iommu-group-identity-probe
+
+On molecule, boot without `iommu=pt`, switch one ConnectX-6 Dx port's
+IOMMU group to `identity` with its driver unbound, and run GPU-direct
+receive and transmit into DMA-BUF memory with the GPU's group left
+translated; record in `SPEC.md` whether the NIC's group alone suffices
+and whether a boot-time unbind before NetworkManager and PTP is
+reliable. No dependencies.
+Files: `SPEC.md`.
+§spec:iommu-group-identity
+
+### Switch the NIC's groups at boot §road:iommu-group-identity-unit
+
+Ship a boot-time unit that gives the NIC's IOMMU groups an identity
+domain, and drop `iommu=pt` from `10-iommu.toml` in the same change.
+Blocked — needs a positive probe. Unblocked when
+§road:iommu-group-identity-probe shows the NIC's group alone carries
+GPU-direct packet I/O.
+Files: `build_files/build.sh`, new unit and script under `build_files/`.
+§spec:iommu-group-identity
+
+**Verify:** With `iommu=pt` absent from `/proc/cmdline`, the NIC's
+IOMMU groups read `identity` and every other group reads `DMA-FQ`.
+Eight receive and eight transmit 2160p59.94 flows run on one port with
+no loss and no IO page faults in the kernel log.
