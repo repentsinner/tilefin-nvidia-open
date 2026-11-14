@@ -166,7 +166,23 @@ chezmoi init --apply <your-dotfiles-repo>
 The chezmoi-managed systemd unit reassembles the userbox on each login.
 After `chezmoi apply`, the process is self-sustaining.
 
-## Configuration
+## Usage
+
+### Updates
+
+The image stages each new build automatically, and the next reboot applies
+it. To hold a machine on its current image, turn on production mode:
+
+```bash
+ujust production-mode --start
+```
+
+While production mode is on, `ujust update` still applies the latest image
+on demand. To resume automatic updates:
+
+```bash
+ujust production-mode --stop
+```
 
 ### Niri
 
@@ -218,3 +234,7 @@ Hyprland has been removed from this image. Niri is the sole compositor.
 - [Universal Blue Forums](https://universal-blue.discourse.group/)
 - [Universal Blue Discord](https://discord.gg/WEu6BdFEtp)
 - [bootc Discussion Forums](https://github.com/bootc-dev/bootc/discussions)
+
+## License
+
+Tilefin is licensed under the Apache License 2.0. See [LICENSE](LICENSE).

@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+# Lint when a governance file is staged at any depth.
+# The shared script uses Git to select files through the ignore rules.
+staged=$(git diff --cached --name-only)
+if ! echo "$staged" | grep -qE '(^|/)(SPEC|ROADMAP|README|REQUIREMENTS|CHANGELOG)\.md$'; then
+  exit 0
+fi
+
+# The contract has one executable form, bundled with the notation plugin
+# (SPEC §spec:governance-lint), so the hook runs that rather than holding a
+# second copy of the checks. A git hook runs outside Claude Code, where
+# ${CLAUDE_PLUGIN_ROOT} is unset, so the installed plugin cache is searched
+# instead. GOVERNANCE_LINT overrides the search.
+#
+# The cache keeps each installed version in its own directory
+# (cache/<marketplace>/notation/<version>/), and old versions stay behind
+# after an update, so the search takes the highest version rather than the
+# first match. The flat layout the notation template searches is kept too.
+script="${GOVERNANCE_LINT:-}"
+if [ -z "$script" ]; then
+  script="$(
+    for candidate in \
+      "$HOME"/.claude/plugins/cache/*/notation/scripts/governance-lint.sh \
+      "$HOME"/.claude/plugins/cache/*/notation/*/scripts/governance-lint.sh; do
+      [ -x "$candidate" ] && printf '%s\n' "$candidate"
+    done | sort -V | tail -n 1
+  )"
+fi
+
+# Plugin absent: this checkout gets no early warning, which is a worse commit
+# experience but not a wrong one. CI runs the same script and is the authority.
+if [ -z "$script" ] || [ ! -x "$script" ]; then
+  echo "pre-commit: notation plugin not found, skipping governance lint (CI still enforces it)" >&2
+  exit 0
+fi
+
+# Git hooks run with a minimal PATH and do not inherit an interactive shell,
+# so tools installed under $HOME are absent even when they work in a terminal.
+# Prime PATH with the usual places so the script resolves its linters instead
+# of skipping them: ~/.local/bin carries rumdl, uv and mise, and the
+# version-manager directories carry npx.
+for dir in \
+  "$HOME"/.local/bin \
+  "$HOME"/.cargo/bin \
+  "$HOME"/.nvm/versions/node/*/bin \
+  "$HOME"/.volta/bin \
+  "$HOME"/.local/share/fnm/node-versions/*/installation/bin \
+  /opt/homebrew/bin \
+  /usr/local/bin
+do
+  [ -d "$dir" ] || continue
+  case ":${PATH}:" in
+    *":${dir}:"*) ;;
+    *) PATH="${dir}:${PATH}" ;;
+  esac
+done
+export PATH
+
+# No --require-tools: the script skips a check whose tool is absent and runs
+# the rest, so a missing linter reports a notice instead of blocking the
+# commit. A real contract violation still fails, which is the point of a hook.
+exec "$script"
