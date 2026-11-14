@@ -1,0 +1,12 @@
+# Block host sleep while a guest holds the passed-through GPU
+# (§spec:passthrough-host-power). S3 cuts the GPU's power under the guest,
+# whose driver then has to reset it.
+[Unit]
+Description=Block sleep while a VM holds the passed-through GPU
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/systemd-inhibit --what=sleep --mode=block \
+    --who="GPU passthrough" \
+    --why="A VM holds the passed-through GPU; shut the VM down first" \
+    /usr/share/tilefin/scripts/passthrough-sleep-guard.sh

@@ -302,6 +302,17 @@ a modifier a guest needs, such as either Ctrl or Alt, and cannot be a
 chord. The upstream default, Scroll Lock, is absent from many keyboards,
 which leaves no way to release capture.
 
+A lone tap of the Windows key shall open the guest's Start menu. B7 sends
+keys through SPICE, and its key table writes extended keys (Windows,
+Right Ctrl, arrows) as `0xE0xx` while the SPICE library it bundles reads
+`0x100` plus the code. Every extended key then reaches the guest with a
+stray key release attached. Most keys tolerate that; Windows opens Start
+only when nothing else happens between a Windows key press and its
+release, so the stray release cancels it. The image patches the bundled
+library to send the `E0` sequences a keyboard sends. Upstream moved key
+input off SPICE after B7 and declined the B7 fix (gnif/LookingGlass#1341),
+so the patch lives in the image's build and goes away with B8.
+
 #### Passthrough SELinux labels §spec:passthrough-selinux-labels
 
 - `/dev/shm/looking-glass` shall carry `svirt_tmpfs_t` from boot. The
@@ -427,6 +438,44 @@ driver's GPU state initialised while no client holds the GPU. Without it
 the first CUDA client after an idle period waits for the driver to bring
 the GPU up. On a passthrough machine the GPU leaves the host whenever a
 guest runs, so the state persistence keeps does not survive that anyway.
+
+#### Host sleep and shutdown §spec:passthrough-host-power
+
+A running guest shall not ride through host sleep or be cut off by host
+shutdown.
+
+- While a guest holds the passed-through GPU, the host shall refuse to
+  sleep, whatever requests it: the idle auto-suspend
+  (§spec:auto-suspend), a key, or a command. Sleep becomes possible
+  again within seconds of the last such guest stopping.
+- On host shutdown, the host shall ask every running guest to shut down
+  and wait for it, and power a guest off only once a timeout passes, so
+  shutdown never hangs on a guest.
+- The host shall not start guests at boot.
+
+*Why block sleep*: suspend to RAM cuts the GPU's power while the guest,
+frozen with the rest of the host, holds it. The guest's driver finds the
+GPU reset on resume. Over one 27-minute S3 cycle with a Windows guest,
+VFIO restored the device without complaint on the host, and the guest's
+NVIDIA driver logged four `nvlddmkm` Event 153 errors as it reset the GPU.
+It recovered with nothing rendering; with work in progress the same reset
+loses it. Suspending the guest along with the host would need the guest
+to give up the GPU cleanly, which a guest agent cannot promise for a
+passed-through device.
+
+*Why the handover markers carry it*: the handover hook already keeps one
+marker per guest that took the GPU (§spec:gpu-handover), so the guard
+follows exactly the guests that matter and needs no knowledge of VM
+names. A guest without a passed-through GPU does not block sleep.
+
+*Why shut guests down rather than save them*: libvirt's default on host
+shutdown saves each guest's memory to disk and restores it at boot.
+libvirt refuses that for a guest with a passed-through device, whose
+state lives partly on the device. A clean guest shutdown is the outcome
+that survives. The timeout is long because Windows can spend minutes
+finishing updates on its way down. Starting guests at boot is off
+because a passthrough guest takes the GPU from the host the moment it
+starts, which is the operator's call.
 
 #### VM power recipe §spec:vm-power-recipe
 

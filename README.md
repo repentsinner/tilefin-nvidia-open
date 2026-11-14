@@ -261,7 +261,14 @@ Glass** from the launcher. It opens fullscreen on its own workspace:
 - **Super+Shift+Escape** takes niri's shortcuts back from any app that has
   grabbed the keyboard.
 
-Shut the guest down from inside it, or with `ujust vm stop`.
+Shut the guest down from inside it, or with `ujust vm stop`. If you shut
+the host down with the guest still running, the host shuts the guest down
+first and waits for it. The host won't sleep while the guest has the GPU,
+because sleep cuts the GPU's power under the guest. To suspend, shut the
+guest down first, then suspend the host. To keep the guest's open windows
+across that, hibernate the guest instead of shutting it down: hibernation
+saves its session to its own disk and powers it off, which hands the GPU
+back.
 
 #### If Looking Glass stops working
 

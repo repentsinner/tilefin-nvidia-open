@@ -1,0 +1,29 @@
+--- a/src/channel_inputs.c
++++ b/src/channel_inputs.c
+@@ -133,7 +133,13 @@
+   if (!channel->connected || !channel->ready)
+     return false;
+ 
+-  if (code > 0x100)
++  // Looking Glass B7 passes extended keys as 0xE0xx, the scancode bytes in
++  // reading order. Fed through the 0x100 + code branch below, 0xE05B (left
++  // Win) became E0 5B DF: Win down plus a stray key release, which stops a
++  // lone Win tap from opening the guest's Start menu.
++  if ((code & 0xff00) == 0xe000)
++    code = 0xe0 | ((code & 0xff) << 8);
++  else if (code > 0x100)
+     code = 0xe0 | ((code - 0x100) << 8);
+ 
+   SpiceMsgcKeyDown * msg =
+@@ -156,7 +162,10 @@
+   if (!channel->connected || !channel->ready)
+     return false;
+ 
+-  if (code < 0x100)
++  // See purespice_keyDown: 0xE0xx releases as E0 (xx | 0x80).
++  if ((code & 0xff00) == 0xe000)
++    code = 0x80e0 | ((code & 0xff) << 8);
++  else if (code < 0x100)
+     code |= 0x80;
+   else
+     code = 0x80e0 | ((code - 0x100) << 8);

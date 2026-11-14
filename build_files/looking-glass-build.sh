@@ -26,6 +26,12 @@ git clone -q --depth 1 --branch "$LG_TAG" --recurse-submodules --shallow-submodu
     "$LG_REPO" /src
 test "$(git -C /src rev-parse HEAD)" = "$LG_COMMIT"
 
+# B7 hands extended keys (Win, Right Ctrl, arrows) to PureSpice as 0xE0xx while
+# PureSpice expects 0x100 + code, so each reaches the guest with a stray key
+# release attached and a lone Win tap never opens Start. Upstream moved key
+# input off SPICE after B7 and fixes no B7 bugs; drop this with B8.
+git -C /src/repos/PureSpice apply "$(dirname "$0")/looking-glass-purespice-extended-keys.patch"
+
 # OPTIMIZE_FOR_NATIVE defaults to ON upstream and compiles for the build
 # machine's CPU. On a builder with AVX-512 that yields a client that dies with
 # SIGILL before main() on CPUs without it, which is what the COPR package does.
