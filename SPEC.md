@@ -1632,7 +1632,7 @@ zram-only, which cannot back a hibernation image.
 Idle detection is hypridle's; the suspend decision is a guard script.
 hypridle fires each listener once per idle period, so a machine that
 went idle during business hours would not auto-suspend when 18:00
-passes — the listener already fired and will not re-fire without
+passes — the listener already fired and does not re-fire without
 intervening activity. A re-arm timer restarts hypridle at 18:00 on
 weekdays. The restart begins a fresh idle countdown: an already-idle
 machine fires the 30-minute listener again and suspends near 18:30.
@@ -1955,7 +1955,7 @@ That is a performance ceiling, not a functional blocker.
 ### Deferred: building nvidia-fs.ko
 
 Compiling nvidia-fs into the image was prototyped and deferred, not
-ruled out — see "Network filesystems will require it" below. It is
+ruled out — see "Network filesystems require it" below. It is
 buildable — the module needs one driver header (`nv-p2p.h`, public
 because the image runs the *open* driver), symbol CRCs read from the
 shipped `nvidia.ko`, and `kernel-devel` from Fedora's `updates-archive`
@@ -1972,7 +1972,7 @@ shipped `nvidia.ko`, and `kernel-devel` from Fedora's `updates-archive`
 `p2pdma` avoids all three, and covers the local-NVMe workload this
 section was raised for.
 
-#### Network filesystems will require it
+#### Network filesystems require it
 
 `p2pdma` is restricted to NVMe block devices. NVIDIA scopes the
 exemption explicitly: nvidia-fs.ko "is not necessary for the case of
@@ -2004,9 +2004,9 @@ BAR1 rather than mapped through a sliding window. That took
 (§spec:nvidia-params-as-kargs explains why).
 
 The value is `2` (AUTO), not `1` (ENABLE). Per `nvrm_registry.h`, AUTO
-"will only map static BAR1 if static BAR1 size is calculated to be big
-enough to map all of FB once plus a calculated amount for other expected
-BAR1 mappings", whereas ENABLE "does not take into account other
+maps static BAR1 only when BAR1 is big enough to map all of FB once plus
+an allowance for other expected BAR1 mappings, whereas ENABLE "does not
+take into account other
 expected BAR1 mappings and may lead to BAR1 exhaustion later". Those
 other mappings are GPUDirect RDMA's, which the static-BAR1 configuration
 had to leave room for.
@@ -2051,7 +2051,7 @@ work.
 
 The observable signal that both gates passed is
 `/sys/bus/pci/devices/<gpu>/p2pmem/`. If that directory does not exist,
-the driver never registered the pool and no userspace configuration will
+the driver never registered the pool and no userspace configuration can
 produce a DMA path. Check `/proc/driver/nvidia/params` alongside it —
 a truncated `RegistryDwords` means the parameter never arrived, which is
 a different failure from the driver declining to register.
