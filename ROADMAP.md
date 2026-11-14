@@ -97,37 +97,30 @@ around it.
 
 ## Rootless container enabling config §road:rootless-k8s-enabling
 
-### Probe cgroup delegation on base-nvidia §road:cgroup-delegation-probe
+### Load the iptables modules at boot §road:kind-iptables-modules
 
-Determine whether base-nvidia already delegates cgroup v2 controllers
-(`cpu`, `cpuset`, `io`, `memory`) to the user session. On a running
-image, check
-`cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/.../cgroup.controllers`
-and `systemctl cat user@.service`. If delegation is absent, add a
-`user@.service.d` drop-in. This gates the rest of the section.
-Files: `build_files/build.sh` (and a drop-in conf if needed).
+Write `/usr/lib/modules-load.d/kind-iptables.conf` listing `ip_tables`,
+`iptable_nat`, `ip6_tables` and `ip6table_nat`, so CoreDNS in a rootless
+`kind` cluster can reach the API server (#63). No dependencies.
+Files: `build_files/build.sh`.
 §spec:rootless-k8s-enabling
-
-**Verify:** The delegated controllers appear in the user slice's
-`cgroup.controllers` on a booted image.
 
 ### Select podman as the kind provider §road:kind-podman-enabling
 
 Export `KIND_EXPERIMENTAL_PROVIDER=podman` system-wide via
 `/etc/environment.d/`, matching the electron-wayland pattern
-(§spec:wayland-config), and add any further sysctls `kind` needs beyond
-the inotify cap (§spec:inotify-instance-cap) under
-`/usr/lib/sysctl.d/`. Depends on §road:cgroup-delegation-probe.
-Files: `build_files/build.sh`, new `kind-provider.conf`,
-new sysctl `.conf`.
+(§spec:wayland-config). No dependencies.
+Files: `build_files/build.sh`, new `build_files/kind-provider.conf`.
 §spec:rootless-k8s-enabling
 
-**Verify:** With the Kubernetes clients installed by `setup-user`
-(§spec:k8s-clients), `kind create cluster` succeeds rootless on podman
-and `kubectl get nodes` reports Ready. `printenv
-KIND_EXPERIMENTAL_PROVIDER` reads `podman` in a fresh shell. The compose
-provider is no longer part of this workstream — it ships in the image
-(§spec:compose-provider).
+**Verify:** On a booted image, `lsmod` lists the four iptables modules,
+and `printenv KIND_EXPERIMENTAL_PROVIDER` reads `podman` in a fresh
+shell. With the Kubernetes clients installed by `setup-user`
+(§spec:k8s-clients), `kind create cluster` succeeds rootless,
+`kubectl get nodes` reports Ready, and the CoreDNS pods report `1/1`
+Ready. A throwaway pod resolves `kubernetes.default`. If CoreDNS stays
+`0/1` with the modules loaded, record the new finding under
+§spec:rootless-k8s-enabling before changing the image further.
 
 ## Media CPU partition §road:media-cpu-partition
 

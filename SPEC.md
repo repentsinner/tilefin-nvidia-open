@@ -2572,9 +2572,18 @@ running without SELinux.
 ### Problem
 
 Local Kubernetes development with `kind` on rootless podman fails out
-of the box. `kind` needs cgroup v2 controllers (`cpu`, `cpuset`, `io`,
-`memory`) delegated to the user's systemd session before it can run
-rootless on podman; without delegation, cluster nodes fail to start.
+of the box, in three places.
+
+Cluster networking fails after the cluster boots (#63). Nodes reach
+Ready and Deployments schedule, but CoreDNS stays `0/1` with
+`plugin/ready: Plugins not ready: "kubernetes"`, because it cannot reach
+the API server. In-cluster name resolution fails, and workloads that
+reach each other by Service name crash-loop. `kind`'s rootless guide
+names the likely cause: a rootless container cannot load kernel modules,
+and without `ip_tables`, `iptable_nat`, `ip6_tables` and `ip6table_nat`
+loaded on the host, cluster networking components break. On molecule,
+none of the four is loaded at boot. The cause is unconfirmed until a
+cluster resolves names with the modules loaded.
 
 A second limit bites before `kind` is even installed. The kernel caps
 inotify instances per user at 128 by default. Every `conmon` — one per
@@ -2584,52 +2593,48 @@ reached under an ordinary development session: podman logs
 `conmon: Failed to create inotify fd` and starts containers whose
 monitor cannot watch their exit.
 
-The image ships the compose provider (§spec:compose-provider), and
-`setup-user` installs the Kubernetes clients (§spec:k8s-clients). The
-host-level enabling config those tools depend on is separate: cgroup
-delegation and kernel sysctls are system state only the image can set.
+Third, `kind` uses Docker unless `KIND_EXPERIMENTAL_PROVIDER=podman`
+selects podman, and nothing on the image sets it.
 
-Reported in #62. The tooling half of #62 is tracked in
-[repentsinner/userbox](https://github.com/repentsinner/userbox); this
-section covers only the image-side enabling config.
+The image ships the compose provider (§spec:compose-provider), and
+`setup-user` installs the Kubernetes clients on the host through mise
+(§spec:k8s-clients). The enabling config those clients depend on is
+separate: kernel modules, sysctls and session environment are system
+state only the image can set.
+
+Reported in #62 and #63.
 
 ### Design
 
 The image delivers the host prerequisites for rootless `kind` on podman
-and leaves the binaries to userbox:
+and leaves the binaries to `setup-user`:
 
-- **cgroup v2 controller delegation** to the user session, via a
-  `systemd` drop-in under `user@.service.d`, so rootless podman (and
-  `kind`'s node containers) can create sub-cgroups for `cpu`, `cpuset`,
-  `io`, and `memory`.
-- **`KIND_EXPERIMENTAL_PROVIDER=podman`** exported system-wide via
-  `/etc/environment.d/`, matching the existing electron-wayland pattern
+- **iptables kernel modules** `ip_tables`, `iptable_nat`, `ip6_tables`
+  and `ip6table_nat` shall load at boot, from a file under
+  `/usr/lib/modules-load.d/`.
+- **`KIND_EXPERIMENTAL_PROVIDER=podman`** shall be exported system-wide
+  via `/etc/environment.d/`, matching the electron-wayland pattern
   (§spec:wayland-config), so `kind` selects podman without per-user
   shell config.
-- **A raised inotify instance cap** (§spec:inotify-instance-cap) and any
-  further sysctls `kind` requires to run rootless on podman, via
+- **A raised inotify instance cap** (§spec:inotify-instance-cap), via
   `/usr/lib/sysctl.d/`.
 
-The base image may already delegate cgroup controllers for rootless
-podman; if so, this section reduces to verifying and documenting that,
-plus the provider env var and any missing sysctls.
+*Why modules-load.d*: module autoloading does not reach a request made
+from a rootless container's user namespace, so the host has to load the
+modules before the cluster starts. Loading four small netfilter modules
+on every boot costs nothing measurable on a host that already loads
+`nf_tables`.
 
-The inotify cap is independent of the open questions below — it blocks
-podman generally, not just `kind` — so it ships ahead of them.
+The image adds no cgroup delegation. `kind`'s rootless guide requires
+the `cpu` controller, which systemd 252 and later delegates by default.
+On molecule (image `latest.20260902`), the user service's
+`cgroup.controllers` reads `cpu io memory pids`, from Fedora's own
+`user@.service` drop-ins.
 
-### Open questions
-
-- Does base-nvidia already ship cgroup v2 delegation for the user
-  session, or does the image need to add the `user@.service.d`
-  drop-in?
-- `kind` exported from userbox runs inside the distrobox. Does it drive
-  the host podman cleanly through the exported wrapper, or does the
-  nesting force `kind` onto the host `PATH`? This determines whether the
-  userbox split is sufficient or the image also carries the binary.
-
-Requirements for cgroup delegation and the provider env var follow once
-the cgroup delegation state on base-nvidia and the
-kind-in-distrobox-vs-host question resolve via `/plan`.
+The image adds no further sysctls. `kind`'s rootless guide lists the two
+inotify limits and, only for host ports below 1024,
+`net.ipv4.ip_unprivileged_port_start`. A cluster can map high host
+ports, so the image leaves privileged ports closed.
 
 ### Raised inotify instance cap §spec:inotify-instance-cap
 
