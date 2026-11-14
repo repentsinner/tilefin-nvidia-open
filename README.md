@@ -199,6 +199,84 @@ its work. If a guest hangs instead of shutting down, power it off with
 `ujust vm stop --force`. When more than one VM is defined, add its name,
 for example `ujust vm start win11`.
 
+### Passing the NVIDIA GPU to a VM
+
+A machine with an integrated GPU can hand its NVIDIA GPU to a VM, for
+software that needs Windows and a real GPU. The desktop stays on the
+integrated GPU, and Looking Glass shows the guest's screen in a window,
+pixel for pixel. The NVIDIA GPU returns to Linux whenever the VM is off,
+so CUDA work keeps it the rest of the time.
+
+1. **Move the desktop to the integrated GPU.** Plug your monitor into the
+   motherboard's video output, and set the integrated GPU as the primary
+   display in the firmware setup. On MSI boards, set **Initiate Graphic
+   Adapter** to **IGD**.
+2. **Prepare the machine:**
+
+   ```bash
+   ujust setup-gpu-passthrough
+   ```
+
+   It checks the GPUs and the IOMMU, then asks before each change. When it
+   finishes, log out and back in.
+3. **Create the VM** in virt-manager on the **QEMU/KVM system** connection:
+   UEFI firmware with Secure Boot, a virtio disk and network card, and the
+   [virtio-win](https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso)
+   ISO attached for drivers. For Windows 11, choose it as the operating
+   system so virt-manager adds the TPM. Install the guest, then the
+   virtio guest tools from that ISO.
+4. **Add the GPU and Looking Glass's shared memory.** With the VM off, add
+   both of the NVIDIA GPU's functions (the GPU and its audio device) as
+   PCI host devices, then add this to the VM's XML with
+   `virsh --connect qemu:///system edit <vm>`:
+
+   ```xml
+   <shmem name='looking-glass'>
+     <model type='ivshmem-plain'/>
+     <size unit='M'>128</size>
+   </shmem>
+   ```
+
+   If `setup-gpu-passthrough` reported guest address-width settings,
+   rerun it and let it apply them to this VM.
+5. **Install the guest software.** Start the VM and, inside it, install
+   NVIDIA's driver for your GPU and the **Looking Glass B7 host** from
+   [looking-glass.io](https://looking-glass.io/downloads). The host must be
+   B7 to match the client in this image.
+6. **Give the NVIDIA GPU a display.** Looking Glass captures what the GPU
+   draws, and a GPU with no monitor draws nothing. Run a cable from the
+   NVIDIA GPU to a second input on your monitor, or use a dummy plug.
+7. **Remove the emulated display**, so the guest has only the real GPU:
+
+   ```bash
+   virt-xml --connect qemu:///system <vm> --edit --video model.type=none
+   ```
+
+From then on, start the VM with `ujust vm start` and open **Looking
+Glass** from the launcher. It opens fullscreen on its own workspace:
+
+- **Right Ctrl** releases the keyboard and mouse. Hold it with **Q** to quit
+  the client, or with **F** to leave fullscreen.
+- **Super+`** returns to the Looking Glass workspace.
+- **Super+Shift+Escape** takes niri's shortcuts back from any app that has
+  grabbed the keyboard.
+
+Shut the guest down from inside it, or with `ujust vm stop`.
+
+#### If Looking Glass stops working
+
+The monitor cable shows the guest's screen but sends it no keyboard or
+mouse input. To regain control, give the VM an emulated display again,
+restart it, and use virt-manager's console:
+
+```bash
+virt-xml --connect qemu:///system <vm> --add-device --video virtio
+ujust vm stop --force
+ujust vm start
+```
+
+Remove the emulated display again (step 7) once Looking Glass works.
+
 ### Niri
 
 Customize by editing `~/.config/niri/config.kdl`. See the [Niri wiki](https://github.com/YaLTeR/niri/wiki) for configuration options.
