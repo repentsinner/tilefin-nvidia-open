@@ -1461,13 +1461,27 @@ physical cores to isolate. The derivation:
   (`topology/thread_siblings_list`). A paced thread then runs on one
   sibling with the other idle.
 - Keeps CPU 0 and its L3 group in the housekeeping set, because
-  `nohz_full` forces the boot CPU outside the isolated set.
+  `nohz_full` forces the boot CPU outside the isolated set. When the
+  node has a single L3 group, the derivation keeps only CPU 0's
+  physical core in the housekeeping set and takes the isolated cores
+  from the rest of the group. Isolated threads then share the L3 with
+  housekeeping load, and the printed partition says so.
+- Takes isolated cores only from the performance cores on a hybrid CPU.
+  On Intel hybrid parts the kernel lists them in
+  `/sys/devices/cpu_core/cpus` and the efficiency cores in
+  `/sys/devices/cpu_atom/cpus`; neither file exists on other CPUs, and
+  the derivation then treats every core alike. An efficiency core
+  shares its L2 with three others and runs at a lower clock, so a paced
+  thread there misses its schedule under load the partition cannot see.
 
 On molecule every device reports one NUMA node, so L3 grouping is the
 only locality signal: eight groups of four cores, eight threads each.
 
 The arguments apply as local kargs through `rpm-ostree kargs`, replacing
 an earlier partition rather than adding a second. Local kargs are machine
+Intel desktop CPUs share one L3 across the package, so there the
+single-group rule and, on hybrid parts, the core-type rule decide the
+partition.
 state, and §spec:karg-drift treats them as deliberate. `ujust media-cores
 --remove` deletes them.
 
