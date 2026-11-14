@@ -3,29 +3,6 @@
 Planned work derived from SPEC.md. Sections in build-dependency order.
 Completed work is removed — see CHANGELOG.md for history.
 
-## Dual-channel image publishing §road:image-channels
-
-### Semver provenance in image tags §road:build-channel-tags
-
-Add a workflow step that reads `version.txt` into a step output. Update
-`docker/metadata-action` tags: replace `latest.YYYYMMDD` and bare
-`YYYYMMDD` with `latest.v<version>.<YYYYMMDD>`. Add `stable` and
-`<version>` tags for `v*` tag builds. Remove `<major>.<minor>` tag. Set
-`org.opencontainers.image.version` label to semver.
-Files: `.github/workflows/build.yml`.
-§spec:daily-tag-provenance §spec:oci-version-label
-
-### Widen the push and signing gate §road:build-push-gate
-
-Widen the push-to-GHCR and cosign-signing `if` conditions to allow
-`refs/tags/v*` in addition to the default branch. Depends on
-§road:build-channel-tags.
-Files: `.github/workflows/build.yml`.
-§spec:tag-builds-stable-channel
-
-**Verify:** A `v*` tag push publishes `stable` and `<version>` to GHCR,
-signed.
-
 ## EGL-Wayland platform plugin §road:egl-wayland
 
 ### Ship egl-wayland in the image §road:egl-wayland-package

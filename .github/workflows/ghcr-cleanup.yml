@@ -1,0 +1,52 @@
+---
+# Prune the image package on GHCR (§spec:image-retention). Every build moves
+# `latest` onto a new image and adds a cosign signature, so without pruning
+# the package fills with untagged images and stranded signatures that bury
+# the tagged images on the package page.
+name: GHCR cleanup
+on:
+  schedule:
+    - cron: '30 11 * * 0'  # Sundays, 11:30 UTC, after the daily build
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Log what would be deleted without deleting it
+        type: boolean
+        default: true
+
+permissions:
+  packages: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    name: Prune image package
+    runs-on: ubuntu-latest
+    steps:
+      # Daily snapshots expire after 90 days. Removing a snapshot tag from an
+      # image that also carries latest only unlinks the tag; the image goes
+      # once its last tag does. Channel and release tags never match.
+      - name: Expire daily snapshot tags
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+        with:
+          package: ${{ github.event.repository.name }}
+          use-regex: true
+          delete-tags: '^(latest\.v\d+\.\d+\.\d+\.\d{8}|latest\.\d{8}|\d{8})$'
+          exclude-tags: '^(latest|stable|\d+\.\d+\.\d+)$'
+          older-than: 90 days
+          dry-run: ${{ inputs.dry-run == true }}
+      # Untagged images get a week's grace for anything pulled by digest;
+      # signatures whose image is gone are deleted.
+      - name: Delete untagged images and orphaned signatures
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+        with:
+          package: ${{ github.event.repository.name }}
+          use-regex: true
+          exclude-tags: '^(latest|stable|\d+\.\d+\.\d+)$'
+          delete-untagged: true
+          delete-orphaned-images: true
+          older-than: 7 days
+          dry-run: ${{ inputs.dry-run == true }}
