@@ -491,18 +491,21 @@ kernel.panic = 20
 # not as standing configuration.
 EOF
 
-# Enable IOMMU for GPU passthrough (harmless on single-GPU systems)
-# This sets kernel args that will be applied on next boot after image switch
+# Enable the IOMMU for GPU passthrough, with host-owned devices in passthrough
+# mode. These kernel args apply on the next boot after an image switch.
 mkdir -p /usr/lib/bootc/kargs.d
 cat > /usr/lib/bootc/kargs.d/10-iommu.toml <<'EOF'
-# Enable the IOMMU so VFIO can hand a GPU to a guest (§spec:virtualization).
-# These two are the whole requirement for passthrough and are harmless on a
-# host that never passes anything through.
+# intel_iommu=on and amd_iommu=on enable the IOMMU so VFIO can hand a GPU to a
+# guest (§spec:virtualization). The AMD driver initialises by default and logs
+# "Unknown option - 'on'" for its argument, so that one is inert and kept for
+# symmetry.
 #
-# iommu=pt is deliberately absent (§spec:iommu-mode). It is a host-side
-# performance preference, not a passthrough prerequisite, and it costs the
-# IOMMU protection that is the reason to turn the thing on.
-kargs = ["intel_iommu=on", "amd_iommu=on"]
+# iommu=pt gives host-owned devices an identity domain. The NIC needs it to
+# DMA into GPU memory registered as a DMA-BUF memory region, because under a
+# translating IOMMU every one of those peer-to-peer writes faults
+# (§spec:iommu-mode). Passthrough to a guest still works: binding vfio-pci
+# moves that device's group into a translated domain that VFIO owns.
+kargs = ["intel_iommu=on", "amd_iommu=on", "iommu=pt"]
 EOF
 
 # Enable verbose boot (show kernel and systemd messages instead of splash)

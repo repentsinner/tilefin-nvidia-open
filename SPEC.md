@@ -153,7 +153,9 @@ GPU passthrough support:
 - virtiofsd (fast file sharing).
 - Polkit rule: wheel group can manage VMs without extra groups.
 - IOMMU kernel args `intel_iommu=on` and `amd_iommu=on` via `bootc
-  kargs.d`. `iommu=pt` is deliberately absent (§spec:iommu-mode).
+  kargs.d`, with `iommu=pt` beside them for GPU-direct packet I/O
+  (§spec:iommu-mode). Passthrough works under `pt`, because `vfio-pci`
+  gives a guest's device a translated domain of its own.
 
 ## Wayland environment config §spec:wayland-config
 
@@ -1211,9 +1213,9 @@ The DeckLink's 64-bit DMA mask imposes no IOMMU constraints.
 *Status: complete*
 
 The ConnectX-6 carries SMPTE ST 2110 media on the kernel's inbox
-`mlx5_core` driver. The image adds nothing for it beyond PTP
-(§spec:ptp). It carries no DOCA, no Rivermax, and no rebuilt
-`nvidia-peermem`.
+`mlx5_core` driver. The image adds two things for it: PTP (§spec:ptp)
+and IOMMU passthrough for GPU-direct packet I/O (§spec:iommu-mode). It
+carries no DOCA, no Rivermax, and no rebuilt `nvidia-peermem`.
 
 ### Rejected: Rivermax on DOCA-Host
 
@@ -1238,9 +1240,106 @@ If a workload needs the NIC to read and write GPU memory directly,
 DMA-BUF (`ibv_reg_dmabuf_mr()`) is the path. It shares GPU memory
 through the kernel's standard `dma-buf` mechanism, works with upstream
 `rdma-core`, and needs no `nvidia-peermem`. Its prerequisites are open
-NVIDIA kernel modules on a Turing or newer GPU and kernel 5.12 or later,
-which the image meets. Rivermax v1.81.21 did not support DMA-BUF, which
-is why the rejected plan needed DOCA.
+NVIDIA kernel modules on a Turing or newer GPU, kernel 5.12 or later,
+and an IOMMU that leaves the NIC's peer-to-peer DMA untranslated
+(§spec:iommu-mode). The image meets all three. Rivermax v1.81.21 did not
+support DMA-BUF, which is why the rejected plan needed DOCA.
+
+GPU-resident ST 2110 receive and transmit on molecule takes this path: a
+raw-packet verbs queue on the ConnectX-6 Dx reads and writes frame
+buffers in the RTX 6000 Ada's memory, registered as a DMA-BUF memory
+region.
+
+### IOMMU mode §spec:iommu-mode
+
+The image shall set `iommu=pt` alongside `intel_iommu=on` and
+`amd_iommu=on`, in `10-iommu.toml` (§spec:virtualization). Host-owned
+devices then DMA through an identity domain. A device bound to
+`vfio-pci` for a guest still gets a translated domain, because VFIO
+claims the group and attaches a domain of its own, so passthrough is
+unaffected.
+
+*Why*: GPU-direct packet I/O fails under a translating IOMMU, and the
+failure is functional. With the AMD IOMMU translating, a NIC receive
+queue writing into GPU memory registered as a DMA-BUF memory region
+faulted on every peer-to-peer write. The kernel logged IO page faults
+naming the NIC as requester and GPU BAR addresses as the target, and no
+payload landed. With `iommu=pt`, the same path carried eight receive and
+eight transmit 2160p59.94 flows on one port with no loss. This is the
+peer-to-peer constraint that first put `pt` on the image for GDS
+(§spec:gpudirect-storage), and the basis of NVIDIA's `iommu=off`
+guidance: a peer reaching the GPU's BAR needs an untranslated path.
+
+The faults fit a NIC domain that holds no mapping for the BAR addresses
+the DMA-BUF exporter handed it. Whether the exporter or the importer
+should have created that mapping was not established, so a later driver
+may make translated mode work. Until a test shows it does, translated
+mode counts as broken for this path.
+
+*Cost*: under `pt`, every host-owned device DMAs to physical addresses.
+On a machine carrying a capture card and a 100G NIC, and on hosts with
+Thunderbolt, that removes the isolation the IOMMU exists to provide. A
+faulty device, faulty firmware, or a hostile peripheral can write
+anywhere in memory. Two things narrow the exposure without removing it:
+
+- The kernel keeps a device it marks untrusted in a translated domain
+  even under `pt`. Firmware marks the ports behind such devices as
+  external-facing, which covers Thunderbolt on firmware that sets the
+  flag (`iommu_get_default_domain_type()` in `drivers/iommu/iommu.c`).
+- §spec:dma-mask-64bit keeps restricted-mask devices off the image, so
+  the silent failure `pt` causes for them (§spec:decklink-capture) does
+  not arise.
+
+`amd_iommu=on` is inert. The AMD driver has no `on` option, initialises
+by default, and logs `AMD-Vi: Unknown option - 'on'` at boot. It stays
+for symmetry with `intel_iommu=on`, which Fedora's kernel needs because
+it builds without `CONFIG_INTEL_IOMMU_DEFAULT_ON`.
+
+#### Alternatives
+
+- **Translated mode for every device** (rejected). It keeps full
+  isolation and breaks GPU-direct packet I/O, as above. Lazy
+  invalidation (`DMA-FQ`, the Fedora default) changes when unmaps take
+  effect and does nothing for a mapping that never existed.
+- **`iommu=off`** (rejected). It gives up VFIO passthrough
+  (§spec:virtualization) and buys nothing over `pt` for this path.
+- **Identity domain for the NIC's group only** (preferred, blocked). See
+  §spec:iommu-group-identity.
+
+#### Per-group identity domain §spec:iommu-group-identity
+
+The narrower configuration keeps the IOMMU translating by default and
+gives an identity domain only to the IOMMU groups that need peer-to-peer
+DMA. The capture card, storage and Thunderbolt keep translation.
+
+The kernel supports this at runtime through
+`/sys/kernel/iommu_groups/<group>/type`, which accepts `identity`,
+`DMA`, `DMA-FQ` and `auto` (since 5.11). The write succeeds only while
+no driver is bound to any device in the group, and fails with `EPERM`
+otherwise. The only live change it allows is `DMA` to `DMA-FQ`.
+
+An IOMMU translates a DMA by the requester ID of the device that issues
+it. NIC-initiated reads and writes to the GPU's BAR therefore go through
+the NIC's domain, and the GPU's own domain governs only DMA the GPU
+issues. That reasoning says the NIC's group alone needs `identity`. The
+kernel documentation (`sysfs-kernel-iommu_groups`, `p2pdma.rst`) says
+nothing either way, so the claim stands unverified until a test shows
+it.
+
+The topology suits it. Each ConnectX-6 Dx port is a group of its own,
+while the GPU shares a group with its HDMI audio function. Making the
+GPU's group `identity`, if that proves necessary, means unbinding both
+`nvidia` and `snd_hda_intel`.
+
+*What blocks it*: the drivers bind before anything can write the
+`type` file. `mlx5_core` and `nvidia` both load from the initramfs, so a
+boot-time switch has to unbind `mlx5_core` from each port, write
+`identity`, and rebind, before NetworkManager or PTP (§spec:ptp) touches
+the interfaces. For the GPU, unbinding `nvidia` means stopping the
+compositor and every CUDA process first. The kernel has no karg that
+sets a domain type per device. This stays the preferred option. The image
+moves to it once a boot-time unbind proves reliable, and `iommu=pt` leaves
+`10-iommu.toml` in the same change.
 
 ## PTP time sync §spec:ptp
 
@@ -2056,86 +2155,45 @@ produce a DMA path. Check `/proc/driver/nvidia/params` alongside it —
 a truncated `RegistryDwords` means the parameter never arrived, which is
 a different failure from the driver declining to register.
 
-### IOMMU mode §spec:iommu-mode
-
-**The image does not set `iommu=pt`.** It sets `intel_iommu=on` and
-`amd_iommu=on` and nothing more (§spec:virtualization).
-
-`iommu=pt` was carried for GDS: peer-to-peer DMA needs the NVMe device to
-reach the GPU's BAR, and under a *translating* IOMMU that path is
-unreliable — the basis for NVIDIA's `iommu=off` guidance, a functional
-constraint rather than a throughput one. GDS is no longer delivered
-(§spec:gpudirect-storage), which leaves the arg with no requirement behind
-it.
-
-Three things decided the removal rather than a rewrite of the rationale:
-
-- **It is not a passthrough prerequisite.** `intel_iommu=on` or
-  `amd_iommu=on` alone is the minimum for VFIO to hand a device to a
-  guest. `iommu=pt` is a host-side performance preference layered on top.
-- **It costs the protection the IOMMU exists to provide.** Under `pt`,
-  host-owned devices DMA to physical addresses through an identity
-  domain. On a machine carrying a capture card, a 100G NIC and
-  Thunderbolt, that is a real reduction in isolation.
-- **The performance case is unmeasured, here and upstream.** A March 2026
-  patch proposing that the AMD IOMMU default to passthrough "for improved
-  performance" was rejected by the IOMMU maintainer, who noted that lazy
-  translated mode preserves most of the security benefit — and no
-  quantified AMD figures were produced in that thread. An earlier revision
-  of this section asserted that modern IOMMUs are "close to free"; that
-  claim had no measurement behind it and has been withdrawn.
-
-The cost of removal is likewise unmeasured. Translated DMA applies to the
-ConnectX-6 and the DeckLink, and this repository has no before-and-after
-figures for either. Restoring `iommu=pt` is a one-line change to
-`10-iommu.toml` and is the correct response to a measured regression in
-§spec:st2110 or §spec:decklink-capture throughput — not to a suspicion
-of one.
-
-A local karg outranks the image in both directions, which this arg
-demonstrated twice. It was deleted locally when the AJA Corvid44 needed the
-SWIOTLB bounce path (§spec:decklink-capture), and no rebase restored it —
-that took a one-time `rpm-ostree kargs --append=iommu=pt`. That local append
-now outranks the image in the other direction: dropping the arg from
-`10-iommu.toml` does not remove it from a host where it was added by hand.
-Removing it there is an operator step (§spec:karg-drift).
-
 ### Local kernel argument drift §spec:karg-drift
 
-`kargs.d` adds arguments and cannot delete them, and a local append or
-delete outranks the image in either direction. The running command line is
-therefore not a description of the image, and the two drift apart silently.
+On each upgrade, bootc diffs the old image's `kargs.d` against the new
+one. It appends what the new image added, skipping an argument already
+present verbatim, and removes exact matches of what the new image dropped
+(`compute_apply_kargs_diff()` in bootc's `bootc_kargs.rs`). A local
+append or delete outranks the image, and `kargs.d` cannot remove an
+argument it never added. The running command line is therefore not a
+description of the image, and the two drift apart silently.
 
-`rpm-ostree kargs` on molecule, 2026-08-31:
+`rpm-ostree kargs` on molecule, 2026-11-13:
 
 ```text
 rhgb quiet root=… rootflags=subvol=root rw ostree=…
-intel_iommu=on amd_iommu=on systemd.show_status=1 nvidia-drm.modeset=1
-nvidia.NVreg_EnableResizableBar=1
-nvidia.NVreg_RestrictProfilingToAdminUsers=0
-iommu=pt iomem=relaxed
+intel_iommu=on amd_iommu=on systemd.show_status=1
+nvidia.NVreg_RestrictProfilingToAdminUsers=0 iommu=pt
 ```
 
-Two entries are local state rather than image state, and both shall be
-deleted:
+`/proc/cmdline` matches. The 2026-08-31 snapshot also carried
+`nvidia-drm.modeset=1`, `nvidia.NVreg_EnableResizableBar=1` and
+`iomem=relaxed`. The first two left with this image's `kargs.d`.
+`iomem=relaxed`, which nothing in this repository ever set, is gone from
+the command line, so the operator step recorded for it is done.
 
-- `iommu=pt` — appended by hand to repair the AJA-era deletion described
-  in §spec:iommu-mode. The image has since stopped setting it deliberately,
-  but a local append outranks the image, so dropping it from
-  `10-iommu.toml` does not remove it here. Delete with
-  `rpm-ostree kargs --delete=iommu=pt`. Its position after the NVIDIA
-  parameters, rather than beside `amd_iommu=on`, is what marks it local.
-- `iomem=relaxed` — no file in this repository sets it and no section asks
-  for it. It relaxes the kernel's restriction on `/dev/mem` access to
-  reserved regions: a standing weakening of memory protection, adopted for
-  some one-off PCIe or GPU inspection and never removed. Delete with
-  `rpm-ostree kargs --delete=iomem=relaxed`.
+One entry is local state:
 
-`nvidia-drm.modeset=1` and `nvidia.NVreg_EnableResizableBar=1` need no
-action. Both came from this image's own `kargs.d`, so removing them there
-removes them on the next upgrade.
+- `iommu=pt` — appended by hand to repair the AJA-era deletion
+  (§spec:decklink-capture). Its position after the NVIDIA parameter,
+  rather than beside `amd_iommu=on`, is what marks it local. The image
+  carries the same argument (§spec:iommu-mode), so the operator does
+  nothing. The upgrade that brings it finds `iommu=pt` already present
+  and adds no second copy. From then on the image owns it: a later image
+  that drops it from `10-iommu.toml` removes it here too. After the
+  upgrade, `rpm-ostree kargs` and `/proc/cmdline` shall each show
+  `iommu=pt` exactly once. That check holds whichever of `bootc` and
+  `rpm-ostree` staged the upgrade; only bootc's diff was read. If it
+  shows twice, remove one copy with `rpm-ostree kargs --editor`.
 
-`rhgb` and `quiet` also survive from the base image, against the intent of
+`rhgb` and `quiet` survive from the base image, against the intent of
 `20-verbose-boot.toml`; `build.sh` documents
 `rpm-ostree kargs --delete=quiet --delete=rhgb` as a first-boot step that
 was never run. Harmless, and recorded so the comparison is complete.
