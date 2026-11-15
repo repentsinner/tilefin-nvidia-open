@@ -9,5 +9,7 @@
 - action: osbuild/bootc-image-builder-action
   expires: 2027-05-15
   reason: >-
-    Deprecated upstream for osbuild/image-builder-action, and neither
-    publishes a release newer than the main this workflow runs.
+    No release covers the main this runs. Upstream deprecates it for
+    osbuild/image-builder-action, which takes no config file, so iso.toml's
+    kickstart would not apply and the ISO would install unattended,
+    clearing every disk. Stay until the successor accepts a blueprint.
