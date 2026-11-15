@@ -78,9 +78,8 @@ System-wide config lives at `/etc/niri/config.kdl`. Users override via
 
 Editors, browsers, and the Rove CNC controller (VS Code, Zen, Firefox,
 Rove) open in a column 60% of the output's width, because the default
-column is narrow enough that they were widened by hand every time. Rove
-also cannot be resized reliably once open under Wayland, so it has to
-open at its working width. Other applications keep niri's default. The
+column is narrow enough that they were widened by hand every time.
+Other applications keep niri's default. The
 rule matches the app IDs those applications report on Wayland, which for
 VS Code is `com.microsoft.VSCode` rather than its binary name.
 
