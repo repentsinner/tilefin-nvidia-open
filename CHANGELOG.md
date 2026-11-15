@@ -1,3 +1,10 @@
+## [0.13.1](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.13.0...v0.13.1) (2026-11-15)
+
+
+### Bug Fixes
+
+* **boot:** reapply the console log level after Plymouth quits ([ce17f83](https://github.com/repentsinner/tilefin-nvidia-open/commit/ce17f83ba6e19e4991f4b8d9b7bc014e595c2b4c))
+
 # [0.13.0](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.12.2...v0.13.0) (2026-11-15)
 
 
