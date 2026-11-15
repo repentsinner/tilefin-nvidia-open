@@ -1181,7 +1181,7 @@ Bluefin-DX), 0.3.0 (Niri on Bluefin-DX), 0.4.0 (Niri on base-nvidia).
 
 Two workflows in this repository failed silently for months.
 `auto-merge-release.yml` never parsed, so it never ran a step
-(§spec:releases). `build.yml`'s path filter was missing
+(§spec:releases). The image build's path filter was missing
 `predicate-quantifier`, so its docs-only skip never fired and every
 documentation change paid a full image build. Neither was visible in review,
 and no check would have caught either.
@@ -1191,57 +1191,59 @@ Nothing validated `build_files/build.sh` — roughly 500 lines of shell that
 
 ### Design
 
-Three required status checks, named identically across the repositories
-maintained alongside this one so one ruleset definition serves all of them.
-The names are the contract; what runs inside each varies by repository.
+Three required status checks, the names the bug-free-happiness ruleset
+template fixes for every adopting repository, so one ruleset definition
+serves all of them. The names are the contract; what runs behind each
+varies by repository.
 
 | Check | Role |
 | --- | --- |
 | `flywheel/conventional-commit` | commit message hygiene, supplied by flywheel |
-| `governance / lint` | SPEC, ROADMAP and README governance |
-| `quality` | everything else this repository verifies |
+| `quality / governance` | SPEC, ROADMAP and README governance |
+| `quality / correctness` | the image builds, and its scripts and workflows pass static analysis |
 
-A repository with nothing to put in a slot ships the job saying so, rather
-than dropping the check from the ruleset. Removing it trades a visible gap
-for an invisible one, and the entry has to be restored the moment the
-repository grows the capability.
+A repository with nothing to put in a class ships the summary job saying
+so, rather than dropping the check from the ruleset. Removing it trades a
+visible gap for an invisible one, and the entry has to be restored the
+moment the repository grows the capability.
 
-### One required check per gating workflow §spec:require-aggregate-check
+### Summary jobs carry the required checks §spec:require-aggregate-check
 
-A required status check shall name a job that reports on every run, and the
-number of required checks shall follow the number of distinct merge
-decisions rather than the number of kinds of work.
+A required status check shall name a summary job that reports on every run,
+and the number of required checks shall follow the template's classes
+rather than the number of kinds of work.
 
 Two constraints set the shape.
 
-A skipped job reports nothing at all. `build_push` skips on
+A skipped job reports nothing at all. The image build skips on
 documentation-only pull requests, so requiring it directly would leave the
-check pending forever and the pull request unmergeable. The `quality` job
-exists for this: it runs under `if: always()`, and treats a `skipped`
-dependency as a pass and a failed one as a failure. The same trap catches a
-check name copied between repositories — a context no workflow emits is
-indistinguishable, from the ruleset's side, from one that has not reported
-yet.
+check pending forever and the pull request unmergeable. Each
+`quality / <class>` summary job exists for this: it runs under
+`if: always()`, depends on every job in its class, counts a skipped
+dependency as a pass, and fails when any dependency failed or was
+cancelled. The same trap catches a check name copied between repositories:
+a context no workflow emits is indistinguishable, from the ruleset's side,
+from one that has not reported yet.
 
-`needs:` cannot cross workflow files, so an aggregate covers only its own
-file. That sets the floor: one required check per workflow file that gates
-merges. `governance / lint` is separate because it comes from a reusable
-workflow in its own file, not by choice.
+`needs:` cannot cross workflow files, so a summary covers only its own
+file. Every job that gates a merge therefore lives in the quality workflow,
+behind one of the two summaries. Adding a job means adding it to a
+summary's `needs`; the ruleset does not change.
 
-Everything else that gates a merge therefore lives in `build.yml` behind the
-one `quality` aggregate. Adding a job means adding it to that job's `needs`;
-the ruleset does not change.
-
-Splitting a second required check out by *kind* of work — static analysis
-against tests, say — is rejected. Individual job results are visible in the
-checks list whatever the ruleset names, so a second context adds no
-information; it only adds a second thing to keep in sync. A second required
-check earns its place when the *policy* differs, such as an advisory suite
-that should report without blocking.
+Splitting a further required check out by *kind* of work, static analysis
+against tests say, is rejected. Individual job results are visible in the
+checks list whatever the ruleset names, so another context adds no
+information; it only adds another thing to keep in sync across every
+adopting repository. A new class earns its place when the *policy*
+differs, such as an advisory suite that should report without blocking,
+and it enters the template rather than one repository's ruleset.
 
 ### Quality gate contents §spec:quality-gate-contents
 
-`quality` aggregates `build_push` and `static-analysis`.
+`quality / correctness` aggregates the image build and `static-analysis`.
+`quality / governance` aggregates the governance lint. Flywheel's own
+release commits skip the class work, as Flywheel's classifier identifies
+them.
 
 `static-analysis` runs `shellcheck` over `build_files/` and `test/`, and
 `actionlint` over `.github/workflows/`, from version-pinned images rather
@@ -1251,8 +1253,28 @@ gate. It takes seconds and reports independently of the image build.
 `actionlint` is the direct answer to the failure that motivated this
 section: run against the deleted `auto-merge-release.yml`, it reports
 `could not parse as YAML` with the file, line and column. Adopting it also
-found a `concurrency` group referencing `inputs` that `build.yml` never
+found a `concurrency` group referencing `inputs` that the build workflow never
 declares.
+
+### Quality and publishing run in separate workflows §spec:quality-publish-split
+
+The quality workflow runs on pull requests and in the merge queue, and
+builds the image without pushing it. The build workflow runs after merge,
+on pushes to main, on release tags, daily and on demand, and builds, pushes
+and signs the image. Both call one reusable image workflow, so the image a
+pull request proves is the image a release publishes.
+
+**Why separate:** a branch ruleset gates only the quality phase. Publishing
+has no pull request to block, and its triggers (tags, schedule, pushes to
+main) have no place in a merge gate. Sharing one workflow made every
+publishing change a change to the gate, and every gate change a risk to
+publishing.
+
+**Why one image workflow:** two copies of the build steps would drift, and
+a pull request would then prove an image no release builds. The push and
+signing steps run only when the caller asks to publish, and they keep the
+ref check in §spec:image-channels as well, so a pull request or merge-queue
+build cannot publish even through a mistaken caller.
 
 ## Dual-channel image publishing §spec:image-channels
 
@@ -1330,18 +1352,18 @@ Builds triggered by `v*` tags produce tags `stable` and `<version>`.
 The push gate permits `refs/tags/v*` in addition to the default
 branch.
 
-### build_push runs on all non-PR events §spec:build-push-all-events
+### The publish build runs on every publishing event §spec:build-push-all-events
 
-The `build_push` job shall not skip on tag pushes, schedule, or
-`workflow_dispatch` due to the `changes` job being skipped. The
-`changes` job remains PR-only (path filtering is only useful for
-PRs). The `build_push` job's dependency on `changes` shall not
-cause a skip cascade for non-PR events.
+The build workflow's image job shall run on every event that triggers the
+workflow: tag pushes, pushes to main, the schedule and `workflow_dispatch`.
+Path filtering lives only in the quality workflow, where it spares
+documentation-only pull requests the image build.
 
-Rationale: GitHub Actions skips jobs whose `needs` dependencies
-were skipped, regardless of the job's own `if` condition. The fix
-shall prevent this propagation without removing path filtering for
-PRs.
+Rationale: GitHub Actions skips a job whose `needs` dependencies were
+skipped, regardless of the job's own `if` condition. A path filter in the
+publishing workflow would have to be skipped on every non-PR event, and
+its skip would cascade into the publish. Keeping the filter out of that
+workflow removes the cascade rather than working around it.
 
 ### OCI version label uses semver §spec:oci-version-label
 
