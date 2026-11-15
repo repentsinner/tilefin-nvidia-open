@@ -560,6 +560,16 @@ cat > /usr/lib/sysctl.d/92-console-loglevel.conf <<'EOF'
 kernel.printk = 4 4 1 7
 EOF
 
+# Plymouth turns console logging off when it starts in the initrd, which
+# saves the level then in force (the kernel default of 7), and turns it back
+# on when it quits, which restores that saved 7 over the sysctl above. Apply
+# the printk sysctl again once Plymouth has quit (§spec:console-loglevel).
+mkdir -p /usr/lib/systemd/system/plymouth-quit.service.d
+cat > /usr/lib/systemd/system/plymouth-quit.service.d/10-tilefin-console-loglevel.conf <<'EOF'
+[Service]
+ExecStartPost=-/usr/lib/systemd/systemd-sysctl --prefix=kernel.printk
+EOF
+
 # Skip systemd-remount-fs on a read-only root (§spec:composefs-root-remount).
 # The root is a read-only composefs overlay, which refuses every remount. An
 # installer that wrote / into /etc/fstab makes the unit try anyway: it fails

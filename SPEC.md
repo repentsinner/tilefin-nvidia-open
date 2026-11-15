@@ -189,6 +189,12 @@ whose driver never finishes probing prints one there during login. The
 journal keeps every level, and early boot output is unchanged because the
 level applies when `systemd-sysctl` runs.
 
+The level shall also be applied after Plymouth quits. Plymouth suspends
+console logging when it starts in the initrd, before `systemd-sysctl`
+runs, and resuming restores the level saved at suspension, which is the
+kernel default of 7. Without the second application, the greeter's tty
+shows warnings again from the moment Plymouth quits.
+
 ## Virtualization §spec:virtualization
 
 *Status: complete*
