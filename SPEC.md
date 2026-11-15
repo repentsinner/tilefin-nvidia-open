@@ -2133,6 +2133,82 @@ enabling:
 registration at
 `/usr/share/egl/egl_external_platform.d/10_nvidia_wayland.json`.
 
+## Image updates §spec:image-updates
+
+*Status: not started*
+
+### Problem
+
+The image ships its kernel arguments in `/usr/lib/bootc/kargs.d`
+(§spec:virtualization, §spec:iommu-mode, §spec:nvidia-params-as-kargs).
+Only bootc reads that directory. Both update paths ran through
+rpm-ostree instead: the automatic staging timer, and `ujust update`,
+whose Universal Blue recipe runs `rpm-ostree update`. rpm-ostree deploys
+the new image with the booted deployment's kernel arguments unchanged.
+
+On mr-plywood, three rpm-ostree upgrades on 2026-11-13 crossed the image
+that added `iommu=pt` and dropped `amd_iommu=on`. A day later the command
+line still carried the old pair, until an operator edited it by hand.
+Every kernel argument the image adds, changes or drops is therefore
+missing from every machine that updates normally, and nothing reports the
+gap.
+
+### Design
+
+Every image update, automatic or manual, shall go through bootc, so each
+upgrade applies the difference between the booted and the new image's
+`kargs.d` (§spec:karg-drift).
+
+- The image shall stage updates automatically with bootc, at most once a
+  day, and never reboot to apply them. The next reboot, whatever its
+  cause, boots the staged image, as rpm-ostree's `stage` policy did.
+  rpm-ostree's automatic timer shall not be enabled.
+- The production-mode flag shall gate the bootc timer exactly as it gated
+  rpm-ostree's (§spec:production-flag-gates-staging), and the timer shall
+  skip a metered connection as rpm-ostree's did.
+- `ujust update` shall stage the image with bootc, then update Flatpaks
+  and distrobox containers as before. The image's recipe replaces
+  Universal Blue's under that justfile's duplicate-recipe rule, where the
+  later import wins.
+- When bootc refuses to upgrade, for example because the deployment
+  carries rpm-ostree layered packages, the update shall fail with bootc's
+  error. Falling back to rpm-ostree would reopen the gap silently, and
+  layering is outside the image's model (§spec:image-boundary).
+
+The waybar update check and the production-mode recipe read and unstage
+deployments through rpm-ostree (§spec:ujust-production-mode). Both work
+unchanged, because bootc and rpm-ostree stage into the same ostree
+deployment list.
+
+#### Rejected alternatives
+
+- **Keep rpm-ostree and apply `kargs.d` in a post-upgrade hook** — this
+  reimplements bootc's diff, and a reimplementation drifts from bootc's
+  rules for arguments already present or added locally.
+- **Enable `bootc-fetch-apply-updates.timer` as shipped** — its
+  `--apply` reboots as soon as an image lands, which turns every update
+  into an unscheduled reboot. Production mode exists to prevent exactly
+  that surprise.
+- **uupd, Universal Blue's updater** — the base image does not ship it,
+  and it brings its own policy for Flatpaks, distrobox and power state
+  that duplicates `ujust update`.
+- **Report or repair drift with a `ujust` recipe** — the gap is
+  transitional. Once updates go through bootc, each later change reaches
+  the machine by itself, so a one-time operator step per machine
+  (§spec:karg-reconcile) costs less than a recipe kept forever.
+
+### Reconcile kernel arguments once per machine §spec:karg-reconcile
+
+bootc diffs two images, never an image against a machine. A change that
+shipped while a machine updated through rpm-ostree sits in both the
+booted and the new image's `kargs.d`, so no later diff carries it. After
+its first bootc upgrade, the operator of each machine shall compare
+`rpm-ostree kargs` against the image's `kargs.d`. They shall append what
+is missing and delete what a past image added and the image now drops,
+using `rpm-ostree kargs` (§spec:karg-drift). On a machine that missed the
+2026-11-13 change, that means appending `iommu=pt` and deleting
+`amd_iommu=on`.
+
 ## Production mode §spec:production-mode
 
 *Status: complete*
@@ -2784,13 +2860,14 @@ One entry is local state:
   and adds no second copy. From then on the image owns it: a later image
   that drops it from `10-iommu.toml` removes it here too. After the
   upgrade, `rpm-ostree kargs` and `/proc/cmdline` shall each show
-  `iommu=pt` exactly once. That check holds whichever of `bootc` and
-  `rpm-ostree` staged the upgrade; only bootc's diff was read. If it
+  `iommu=pt` exactly once. That holds only for a bootc upgrade, since
+  rpm-ostree does not apply `kargs.d` (§spec:image-updates). If it
   shows twice, remove one copy with `rpm-ostree kargs --editor`.
 
-The same upgrade removes `amd_iommu=on`. The previous image's `kargs.d`
-added it and this one drops it (§spec:iommu-mode), so it is image state
-and needs no operator step.
+A bootc upgrade across the same change removes `amd_iommu=on`, because
+the previous image's `kargs.d` added it and this one drops it
+(§spec:iommu-mode). An rpm-ostree upgrade leaves it in place, and the
+machine needs the operator step in §spec:karg-reconcile.
 
 `rhgb` and `quiet` survive from the base image, against the intent of
 `20-verbose-boot.toml`; `build.sh` documents
