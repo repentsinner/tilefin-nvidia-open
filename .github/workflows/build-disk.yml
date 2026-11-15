@@ -84,12 +84,11 @@ jobs:
           remove-codeql: true
 
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5
 
       - name: Build disk images
         id: build
-        # Pinned to main: the action's only release, v0.0.2, predates the
-        # main this workflow has been running, so pinning it would downgrade.
+        # No release covers the main this runs; see .github/unreleased-actions.yml.
         uses: osbuild/bootc-image-builder-action@028e4d28330efe546229eb9cb52aee78174d2347 # main 2026-09-28
         with:
           builder-image: ${{ env.BIB_IMAGE }}

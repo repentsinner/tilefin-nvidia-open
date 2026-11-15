@@ -1,0 +1,15 @@
+# Actions pinned by commit SHA that publish no release, so their pin
+# carries `# <branch> <YYYY-MM-DD>` in place of a version. The
+# bug-free-happiness pin rule accepts such a pin only while its entry here
+# is unexpired. On expiry, check whether upstream has started releasing:
+# pin to the release if so, and renew the entry if not.
+- action: ublue-os/container-storage-action
+  expires: 2027-05-15
+  reason: Upstream has never tagged a release; its consumers track main.
+- action: osbuild/bootc-image-builder-action
+  expires: 2027-05-15
+  reason: >-
+    No release covers the main this runs. Upstream deprecates it for
+    osbuild/image-builder-action, which takes no config file, so iso.toml's
+    kickstart would not apply and the ISO would install unattended,
+    clearing every disk. Stay until the successor accepts a blueprint.
