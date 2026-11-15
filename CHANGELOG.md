@@ -1,3 +1,10 @@
+## [0.12.2](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.12.1...v0.12.2) (2026-11-15)
+
+
+### Bug Fixes
+
+* **niri:** open editors and browsers at 60% width ([cfd98c6](https://github.com/repentsinner/tilefin-nvidia-open/commit/cfd98c6ad215ca1370fa833ad78a68dd42143a6a))
+
 ## [0.12.1](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.12.0...v0.12.1) (2026-11-15)
 
 
