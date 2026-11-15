@@ -161,7 +161,7 @@ Trayscale needs.
 Configure WireGuard connections through NetworkManager with `nmcli`.
 NetworkManager also reports their status.
 
-## Use
+## Usage
 
 ### Updates
 
