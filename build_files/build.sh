@@ -541,6 +541,32 @@ kernel.panic = 20
 # not as standing configuration.
 EOF
 
+# Keep the console to errors once the system is up, so kernel warnings stop
+# landing on the greeter's tty. Early boot still prints everything, because
+# this applies when systemd-sysctl runs; the journal keeps every level.
+# See §spec:console-loglevel.
+cat > /usr/lib/sysctl.d/92-console-loglevel.conf <<'EOF'
+# console_loglevel 4 prints emerg, alert, crit and err (levels 0-3) to the
+# console and leaves warnings and below to the journal. The other three
+# fields keep the kernel's defaults.
+kernel.printk = 4 4 1 7
+EOF
+
+# Skip systemd-remount-fs on a read-only root (§spec:composefs-root-remount).
+# The root is a read-only composefs overlay, which refuses every remount. An
+# installer that wrote / into /etc/fstab makes the unit try anyway: it fails
+# on every boot, and a hung attempt blocks boot indefinitely, since the unit
+# has no start timeout and the journal flush waits for it.
+mkdir -p /usr/lib/systemd/system/systemd-remount-fs.service.d
+cat > /usr/lib/systemd/system/systemd-remount-fs.service.d/10-tilefin-composefs-skip.conf <<'EOF'
+# statvfs reports ST_RDONLY for the composefs root, so the condition fails
+# and the unit is skipped: never run, never failed, never hung. A writable
+# root still runs it. On a read-only root this also skips any other fstab
+# entry the unit owns (/usr, API filesystems); the image ships none.
+[Unit]
+ConditionPathIsReadWrite=/
+EOF
+
 # Enable the IOMMU for GPU passthrough, with host-owned devices in passthrough
 # mode. These kernel args apply on the next boot after an image switch.
 mkdir -p /usr/lib/bootc/kargs.d

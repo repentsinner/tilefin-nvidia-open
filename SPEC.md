@@ -142,6 +142,47 @@ Enabled at build time:
 enabled: `ptp4l` needs a per-machine interface in `/etc/ptp4l.conf`
 (§spec:ptp).
 
+## Boot on a composefs root §spec:composefs-boot
+
+*Status: complete*
+
+The root filesystem is a read-only composefs overlay, enabled by the
+base image's ostree configuration. Two consequences reach the boot.
+
+### Root remount §spec:composefs-root-remount
+
+`systemd-remount-fs.service` shall not run while `/` is read-only.
+
+*Why*: the unit remounts `/` with the options in `/etc/fstab`, and the
+overlay refuses every remount (`overlay: No changes allowed in
+reconfigure`). Anaconda wrote a `/` entry into `/etc/fstab` on bootc
+installs, and bootc's later cleanup marked it `ro` rather than removing
+it, so on those machines the unit fails on every boot and every unit that
+pulls in `local-fs.target` retries it. On one workstation an attempt hung
+instead of failing. The unit has no start timeout, so boot stopped, and
+because the journal flush is ordered after it, the hung boot left no
+persistent log. Removing the `/` line ended the hangs.
+
+The image cannot edit a machine's `/etc/fstab`, so it skips the unit on a
+read-only root instead. The condition reads the mount state, so a
+writable root still remounts as before. On a read-only root it also
+skips any other fstab entry the unit owns, such as `/usr` or an API
+filesystem; the image ships none.
+
+Upstream, Anaconda stops writing the `/` entry for ostree and bootc
+installs (rhinstaller/anaconda#7393), while the cleanup for existing
+installs is still open (bootc-dev/bootc#971). The skip stays until
+existing installs carry no `/` entry.
+
+### Console log level §spec:console-loglevel
+
+Once the system is up, the kernel shall print only errors and worse to
+the console. Kernel warnings otherwise land on the greeter's tty, since
+the greeter runs on the console (§spec:display-manager), and a device
+whose driver never finishes probing prints one there during login. The
+journal keeps every level, and early boot output is unchanged because the
+level applies when `systemd-sysctl` runs.
+
 ## Virtualization §spec:virtualization
 
 *Status: complete*
