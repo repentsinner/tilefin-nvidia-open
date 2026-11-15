@@ -1,113 +1,101 @@
 # Tilefin
 
-A custom [bootc](https://github.com/bootc-dev/bootc) image built on [Universal Blue](https://github.com/ublue-os)'s [base-nvidia](https://github.com/ublue-os/main), providing the [Niri](https://github.com/niri-wm/niri) tiling compositor for a keyboard-driven [Wayland](https://wayland.freedesktop.org/) desktop with Nvidia GPU support.
+Tilefin is an image-based desktop operating system for NVIDIA workstations.
+It provides a keyboard-driven tiling desktop, updates as one image that
+applies on the next reboot, and keeps development tools outside the
+image so they update on their own schedule.
 
-## Opinionated Defaults
+## Design choices
 
-| Choice | Rationale |
-| -------- | ----------- |
-| **base-nvidia base** | Minimal base with Nvidia drivers. No GNOME, Homebrew, Docker, or other packages to strip. Every installed package is an explicit choice. |
-| **Niri compositor** | Scrollable tiling and clean fractional scaling. The image builds niri from a fork that adds a saturation window rule. |
-| **Wayland-native** | The session is Wayland. X11 apps run through xwayland-satellite, which niri starts when an X11 client connects. |
-| **Tools outside the image** | The image carries only the tools its own shell configuration calls. Standalone tools install per user, and dev toolchains live in a distrobox userbox, so neither waits on an image update. |
-| **Minimal notifications** | Mako runs invisibly by default. A waybar indicator shows when notifications exist. No toasts stealing focus. |
-| **Focus-follows-mouse** | Enabled in Niri. Keyboard navigation still works independently. |
+| Choice | Reason |
+| --- | --- |
+| **[Universal Blue](https://github.com/ublue-os)'s [base-nvidia](https://github.com/ublue-os/main) as the base** | It provides Fedora with NVIDIA's open kernel modules and no desktop environment, so every desktop package in the image is an explicit choice. |
+| **[Niri](https://github.com/niri-wm/niri) as the compositor** | Niri scales fractionally through `wp-fractional-scale-v1`, which keeps text sharp at 1.25x or 1.5x. Windows tile in a horizontal strip that scrolls, so each column keeps its width however many windows are open. The image installs a release build of a niri fork that adds a window desaturation rule. |
+| **A Wayland session** | X11 applications run through xwayland-satellite, which niri starts when an X11 client connects. |
+| **Silent notifications** | Mako keeps notifications in its history without showing popups, and a waybar indicator shows when some are waiting. |
+| **Focus follows the mouse** | Moving the pointer focuses a window. Keyboard navigation works alongside it. |
+| **Tools outside the image** | The image carries only the tools its own configuration calls. Standalone tools install per user, and development toolchains live in a distrobox container, so neither waits on an image update. |
 
-## Project Goals
+## Goals
 
-1. **Reproducibility**: Immutable system image with explicit, auditable package choices
-2. **Reliability**: Stable tiling window manager that works consistently
-3. **Visual Quality**: Proper high-DPI support and modern aesthetics
-4. **Nvidia Compatibility**: Full GPU support for Nvidia hardware
-5. **Keyboard-Driven**: Efficient tiling window management
-6. **Clean separation**: OS image for the session and the tools its configuration calls; per-user installs and a userbox for everything else
+1. **Reproducibility.** An immutable system image whose packages are listed
+   and auditable.
+2. **Reliability.** A tiling desktop that behaves the same on every boot.
+3. **Visual quality.** Sharp text and UI at fractional scales on high-DPI
+   displays.
+4. **NVIDIA support.** Full use of NVIDIA GPUs, for the desktop, for CUDA,
+   and for passing a GPU to a virtual machine.
+5. **Keyboard-driven work.** Window management that needs no mouse.
+6. **Clean separation.** The image holds the session and the tools its
+   configuration calls; everything else installs per user or in a
+   container.
 
-## Key Features
+## What the image includes
 
-### Excellent High-DPI Support
+The base image (`base-nvidia:latest`, which tracks the current Fedora
+release) provides Fedora, NVIDIA's open kernel modules, Podman, distrobox,
+just and ujust, Flatpak with Flathub, WireGuard tools, and media codecs.
+This image adds the following.
 
-Niri provides clean fractional scaling without the pixel-repetition artifacts seen in some other compositors such as Hyprland. Proper `wp-fractional-scale-v1` protocol support ensures crisp text and UI elements on modern displays.
+### Desktop
 
-### Scrollable Tiling
+- **Status bar:** Waybar
+- **Application launcher:** Fuzzel
+- **Terminal:** Ptyxis (GTK 4, GPU-accelerated, with container integration)
+- **Lock screen:** Hyprlock
+- **Idle management:** hypridle
+- **Notifications:** Mako
+- **Screenshots:** Grim and Slurp
+- **Screen recording:** wf-recorder
+- **Wallpaper:** swaybg
+- **File manager:** Thunar
+- **Display layout:** wdisplays
+- **Utilities:** wl-clipboard, cliphist, pamixer, brightnessctl
 
-Niri's unique scrollable/infinite canvas workflow - windows tile horizontally and you scroll through them, rather than cramming everything onto a fixed screen. Great for ultrawide monitors and focus-oriented workflows.
+### Login
 
-## What This Image Provides
+The greeter is tuigreet, run by greetd on the console. It starts the niri
+session directly. The greeter's account and directories come from
+sysusers.d and tmpfiles.d, which suit an image-based system.
 
-The base image (`base-nvidia:latest`, which tracks the current Fedora release) provides Fedora, Nvidia open kernel modules, Podman, distrobox, just/ujust, Flatpak with Flathub, and media codecs. It ships no desktop environment. This image adds:
+### Theme
 
-### Wayland Desktop Environment
+GTK 3 and GTK 4 applications use **adw-gtk3-dark** with the dark color
+scheme preferred. The settings live in `/etc/skel`, so every new user
+starts with them.
 
-- **Status Bar**: Waybar
-- **Application Launcher**: Fuzzel
-- **Terminal**: Ptyxis (GTK4, GPU-accelerated, native container integration)
-- **Lock Screen**: Hyprlock
-- **Idle Management**: hypridle
-- **Notifications**: Mako
-- **Screenshots**: Grim and Slurp
-- **Screen Recording**: wf-recorder
-- **Wallpaper**: swaybg
-- **File Manager**: Thunar
-- **Display Management**: wdisplays
-- **Utilities**: wl-clipboard, cliphist, pamixer, brightnessctl
+### System configuration
 
-### Display Manager
+- **Polkit agent:** lxpolkit, started with the session.
+- **Portals:** xdg-desktop-portal-gtk handles file choosers and other
+  portal requests.
+- **Input:** Caps Lock acts as Control, and touchpads scroll naturally.
+- **Containers:** the Podman socket is enabled.
+- **Virtualization:** KVM, QEMU and libvirt, with virt-manager and the
+  Looking Glass client for viewing a VM that has a passed-through GPU.
+- **Mesh VPN:** Tailscale, with its daemon enabled.
+- **GPU selection:** the session points rendering at the NVIDIA GPU only
+  when an NVIDIA GPU drives a monitor and the machine isn't set up to pass
+  that GPU to a VM. Otherwise applications render on the integrated GPU.
 
-- Uses **greetd** with **tuigreet** instead of GDM
-- Remembers your last session choice
-- Properly configured for OSTree-based systems using sysusers.d and tmpfiles.d
-- Full Nvidia environment variables configured
+## Install
 
-### Theming
+### Install on a new machine
 
-- Default GTK theme set to **adw-gtk3-dark** for both GTK 3 and GTK 4
-- Dark theme preference enabled by default
-- Configuration applied via `/etc/skel` for all new users
+The installer is an ISO built from the image. It runs Anaconda, which asks
+for the target disk and creates the user account.
 
-### System Configuration
+1. On GitHub, open **Actions**, select **Build disk images**, and run it.
+   When the run finishes, download the ISO from the run's artifacts. To
+   build it locally instead, run `just build-iso` in a checkout of this
+   repository.
+2. Write the ISO to a USB drive and boot from it.
+3. Choose the disk and create your account when Anaconda asks.
 
-- **Polkit agent**: lxpolkit configured to autostart with the compositor
-- **Portals**: xdg-desktop-portal-gtk for proper Wayland integration
-- **Input settings**:
-  - Caps Lock remapped to Control
-  - Natural scrolling enabled for touchpads
-  - Custom keyboard and mouse configuration
-- **Podman socket**: Enabled by default
-- **Nvidia optimizations**: Full environment variable configuration for optimal GPU performance
+The installed system updates from the published image, not from the USB
+drive.
 
-## Identified Requirements
-
-Based on the current setup, any replacement compositor must support:
-
-### Core Requirements
-
-- **Nvidia GPU compatibility**: Must work with proprietary Nvidia drivers
-- **Wayland-native**: A Wayland session, with X11 apps served through xwayland-satellite
-- **HiDPI scaling**: Proper fractional scaling and readable text/UI elements
-- **OSTree compatibility**: Works with immutable/atomic OS structure
-
-### Integration Requirements
-
-- **Display Manager**: Works with greetd/tuigreet ✓
-- **Desktop Portals**: Compatible with xdg-desktop-portal-gtk ✓
-- **Session Management**: Launched via Wayland session files ✓
-- **Polkit Integration**: Supports polkit agents for privilege escalation ✓
-
-### User Experience
-
-- **Tiling Management**: Automatic window tiling with keyboard controls
-- **Multi-monitor**: Robust multi-display support
-- **Configuration**: Declarative config files (no GUI-only settings)
-- **Input Remapping**: Custom keyboard layouts (e.g., Caps→Ctrl)
-
-### Development Workflow
-
-- VS Code (host application, attaches to containers)
-- Container tooling (Podman, distrobox — from base image)
-- Fish shell
-- Full KVM/QEMU/libvirt virtualization stack with Looking Glass
-
-## Installation
+### Switch an existing system
 
 From any bootc-based system:
 
@@ -116,55 +104,62 @@ sudo bootc switch ghcr.io/repentsinner/tilefin-nvidia-open
 sudo reboot
 ```
 
-## Post-Installation Setup
+## Set up
 
-### WireGuard VPN
+### Set up your user environment
 
-WireGuard tools are pre-installed. Configure VPN connections via NetworkManager:
-
-- Use `nmcli` for CLI configuration
-- Or install `nm-connection-editor` for GUI setup
-
-WireGuard status can be monitored via NetworkManager.
-
-### Post-Install Setup
-
-First boot provisions your user environment in one step:
+On first login, provision the per-user tools, applications and development
+container:
 
 ```bash
 ujust setup-user
 ```
 
-An interactive menu lets you select from:
+The recipe offers a menu of:
 
 - **Standalone tools**, installed into `~/.local/bin`: Claude Code, uv,
   mise, `gh`, `chezmoi` and the lint gates (`shellcheck`) are selected by
   default. The Kubernetes clients (`kubectl`, `helm`, `kind`, `talosctl`,
   `kubeseal`, `mc`) are optional and install through mise.
-- **Flatpak apps**: Firefox, Bitwarden, Slack, Discord, Signal, Proton VPN
-- **Userbox container**: a distrobox that carries dev toolchains needing a
-  full Fedora userland. It exports `fvm`, the Flutter version manager, to
-  `~/.local/bin`.
+- **Flatpak applications:** Firefox, Bitwarden, Slack, Discord, Signal,
+  Proton VPN, and Trayscale.
+- **The userbox:** a distrobox container that carries development
+  toolchains needing a full Fedora userland. It exports `fvm`, the Flutter
+  version manager, to `~/.local/bin`.
 
 The shell tools behind the image's aliases and prompt (`bat`, `eza`,
 `zoxide`, `direnv`, `starship`, `rbw`) ship in the image and need no
 setup.
 
-To use a different userbox image:
+To assemble the userbox from a different image:
 
 ```bash
 ujust setup-user ghcr.io/youruser/yourbox:latest
 ```
 
-Then bootstrap chezmoi for dotfiles and userbox auto-assembly on future
-logins:
+Then bootstrap chezmoi for dotfiles. The chezmoi-managed systemd unit
+reassembles the userbox on each login from then on:
 
 ```bash
 chezmoi init --apply <your-dotfiles-repo>
 ```
 
-The chezmoi-managed systemd unit reassembles the userbox on each login.
-After `chezmoi apply`, the process is self-sustaining.
+### Join a tailnet
+
+Enrolling the machine is an account action, so the image leaves it to you:
+
+```bash
+sudo tailscale up
+sudo tailscale set --operator=$USER
+```
+
+The second command lets your user talk to the Tailscale daemon, which
+Trayscale needs.
+
+### Configure WireGuard
+
+Configure WireGuard connections through NetworkManager with `nmcli`.
+NetworkManager also reports their status.
 
 ## Usage
 
@@ -184,7 +179,7 @@ on demand. To resume automatic updates:
 ujust production-mode --stop
 ```
 
-#### Choosing a channel
+#### Choose a channel
 
 The image is published on two channels:
 
@@ -206,6 +201,32 @@ To see what has been published, open the package's
 The newest `latest.v…` tag is what a machine on `latest` gets next.
 Snapshots are kept for 90 days and releases indefinitely.
 
+### Idle and suspend
+
+A machine runs in one of three modes. Each dims the display after four
+minutes of idle time:
+
+| Mode | Display off and lock | Automatic suspend | Automatic updates |
+| --- | --- | --- | --- |
+| Development (the default) | Yes | After 30 minutes idle, outside 08:00–18:00 on weekdays | Yes |
+| Hot development | Yes | No | Yes |
+| Production | No | No | No |
+
+Hot development suits a development machine left running on purpose, such
+as one running a long build overnight:
+
+```bash
+ujust hot-development --start
+ujust hot-development --stop
+```
+
+Production mode is described under [Updates](#updates). When both are on,
+production mode wins.
+
+To suspend by hand in any mode, press **Super+Shift+L**. A USB keyboard,
+mouse or wireless receiver wakes the machine, if the firmware allows
+waking from USB.
+
 ### Virtual machines
 
 To start, stop, or check a VM without opening virt-manager:
@@ -221,7 +242,7 @@ its work. If a guest hangs instead of shutting down, power it off with
 `ujust vm stop --force`. When more than one VM is defined, add its name,
 for example `ujust vm start win11`.
 
-### Passing the NVIDIA GPU to a VM
+### Pass the NVIDIA GPU to a VM
 
 A machine with an integrated GPU can hand its NVIDIA GPU to a VM, for
 software that needs Windows and a real GPU. The desktop stays on the
@@ -292,7 +313,7 @@ across that, hibernate the guest instead of shutting it down: hibernation
 saves its session to its own disk and powers it off, which hands the GPU
 back.
 
-#### If Looking Glass stops working
+#### Regain control when Looking Glass fails
 
 The monitor cable shows the guest's screen but sends it no keyboard or
 mouse input. To regain control, give the VM an emulated display again,
@@ -306,15 +327,45 @@ ujust vm start
 
 Remove the emulated display again (step 7) once Looking Glass works.
 
-### Niri
+### Blackmagic capture cards
 
-Customize by editing `~/.config/niri/config.kdl`. See the [Niri wiki](https://github.com/YaLTeR/niri/wiki) for configuration options.
+The DeckLink drivers come from Blackmagic as a Desktop Video for Linux
+download. To build and install the kernel modules, firmware and tools from
+that download:
 
-### Key Bindings
+```bash
+ujust bmd-install <path-to-the-Desktop-Video-tarball>
+```
 
-- **Super + /**: View current key bindings
+The modules build against the running kernel. To remove them:
 
-## Package Management
+```bash
+ujust bmd-uninstall
+```
+
+### Customize niri
+
+The image's niri configuration lives in `/etc/niri/config.kdl`. A file at
+`~/.config/niri/config.kdl` replaces it entirely, so start yours by
+including the image's configuration, then add your changes below it:
+
+```kdl
+include "/etc/niri/config.kdl"
+
+// Your bindings, window rules and output settings follow.
+```
+
+That way, changes to the image's configuration still reach you after
+updates. See the [niri wiki](https://github.com/niri-wm/niri/wiki) for the
+configuration options.
+
+### Key bindings
+
+- **Super+/** shows the key bindings.
+- **Super+Shift+Escape** takes niri's shortcuts back from an app that has
+  grabbed the keyboard.
+
+## Package management
 
 On an immutable system, where a tool lands depends on what depends on it.
 Anything the image's own configuration calls ships in the image, because
@@ -322,40 +373,28 @@ the configuration and the binary have to update together. Everything else
 installs outside the image, so it updates without a rebuild or a reboot:
 
 | Layer | For | Example |
-| -------- | ----- | --------- |
+| --- | --- | --- |
 | **System image** | Session infrastructure, system services, and the binaries the image's own configuration and services call | Niri, greetd, libvirt, `starship`, `direnv`, `docker-compose` |
 | **Per-user tools** (`~/.local/bin`) | Standalone command-line tools that nothing in the image refers to | Claude Code, uv, `gh`, `chezmoi`, and the Kubernetes clients through mise |
-| **Distrobox** | Dev toolchains that need a full distro userland: packages, compilers, headers | The userbox (Flutter through `fvm`), or `distrobox create --image fedora:latest` |
-| **Flatpak** | Sandboxed GUI apps | `flatpak install --user flathub org.gnome.Evince` |
+| **Distrobox** | Development toolchains that need a full distribution userland: packages, compilers, headers | The userbox (Flutter through `fvm`), or `distrobox create --image fedora:latest` |
+| **Flatpak** | Sandboxed GUI applications | `flatpak install --user flathub org.gnome.Evince` |
 
 `ujust setup-user` installs the per-user tools and assembles the userbox.
 
-ujust recipes are baked into the system image (`/usr/share/ublue-os/just/`). They update when the OS image updates via bootc. Run `ujust --list` to see available recipes.
+The ujust recipes ship in the image, in `/usr/share/ublue-os/just/`, and
+update with it. Run `ujust --list` to see them.
 
-## Compositor Migration History
+## Contributing
 
-This project has evolved through several compositors seeking the best HiDPI and tiling experience:
+The design decisions behind the image, with their reasons, are in
+[SPEC.md](SPEC.md). Planned work is in [ROADMAP.md](ROADMAP.md), and
+[CHANGELOG.md](CHANGELOG.md) lists what each release changed.
 
-### Sway → Hyprland
+## Community resources
 
-Sway lacks `wp-fractional-scale-v1` support, limiting it to integer-only scaling (1x, 2x). This is unusable on modern HiDPI displays where users need 1.25x or 1.5x scaling.
-
-### Hyprland → Niri (Current Default)
-
-While Hyprland solved the fractional scaling protocol support, it has two significant issues:
-
-1. **Scaling artifacts** - visible as repeated columns/rows of pixels at certain fractional scale factors
-2. **Recursive splitting layout** - Hyprland's default tiling algorithm continuously subdivides columns for new windows, making layouts with more than 2-3 windows impractical (each window becomes a sliver)
-
-Niri resolves both issues with cleaner fractional scaling and a scrollable horizontal layout that doesn't degrade with window count.
-
-Hyprland has been removed from this image. Niri is the sole compositor.
-
-## Community Resources
-
-- [Universal Blue Forums](https://universal-blue.discourse.group/)
+- [Universal Blue forums](https://universal-blue.discourse.group/)
 - [Universal Blue Discord](https://discord.gg/WEu6BdFEtp)
-- [bootc Discussion Forums](https://github.com/bootc-dev/bootc/discussions)
+- [bootc discussion forums](https://github.com/bootc-dev/bootc/discussions)
 
 ## License
 
