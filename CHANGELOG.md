@@ -1,3 +1,10 @@
+## [0.12.1](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.12.0...v0.12.1) (2026-11-15)
+
+
+### Bug Fixes
+
+* **boot:** skip systemd-remount-fs on a composefs root, quiet the console ([5eea717](https://github.com/repentsinner/tilefin-nvidia-open/commit/5eea717fc162d376ea60ad9115b01796118bc885))
+
 # [0.12.0](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.11.0...v0.12.0) (2026-11-14)
 
 
