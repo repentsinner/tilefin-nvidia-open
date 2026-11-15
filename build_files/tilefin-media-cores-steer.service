@@ -1,0 +1,18 @@
+# Move every movable IRQ off the media CPU partition's isolated set, once,
+# after the drivers that own the busy IRQs have probed
+# (§spec:media-cores-irq-steering). irqaffinity= sets only the mask an IRQ
+# gets at allocation, and a driver that sets its own afterwards escapes it.
+# Without an isolated set on the command line the unit does not run.
+[Unit]
+Description=Steer IRQs off the media CPU partition's isolated set
+ConditionKernelCommandLine=nohz_full
+Wants=network-online.target
+After=network-online.target systemd-modules-load.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/share/tilefin/scripts/media-cores.sh steer
+
+[Install]
+WantedBy=multi-user.target

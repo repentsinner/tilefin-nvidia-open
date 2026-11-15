@@ -481,6 +481,14 @@ systemctl enable tilefin-passthrough-sleep-guard.path
 install -Dm644 /ctx/libvirt-guests.sysconfig /etc/sysconfig/libvirt-guests
 systemctl enable libvirt-guests.service
 
+# Media CPU partition (§spec:media-cpu-partition). The image carries the
+# mechanism and no core numbers: `ujust media-cores` writes a machine's
+# partition as local kernel arguments, and the steering unit runs only on a
+# command line that carries one.
+install -Dm755 /ctx/media-cores.sh /usr/share/tilefin/scripts/media-cores.sh
+install -Dm644 /ctx/tilefin-media-cores-steer.service /usr/lib/systemd/system/tilefin-media-cores-steer.service
+systemctl enable tilefin-media-cores-steer.service
+
 # Raise memlock limit for GPU/RDMA workloads (nvidia_p2p_get_pages,
 # ibv_reg_mr). Applies to all users in wheel group.
 # PAM path — covers interactive login sessions (greetd → niri → terminal)
