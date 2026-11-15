@@ -82,7 +82,7 @@ jobs:
     if: needs.classify.outputs.derived_release_commit != 'true' && needs.classify.outputs.promotion_pr != 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # build.sh is the image: ~500 lines of shell that nothing else
       # validates. Pinned images so the tool versions do not drift.
       - name: shellcheck
