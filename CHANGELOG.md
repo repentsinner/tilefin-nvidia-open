@@ -1,3 +1,10 @@
+# [0.13.0](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.12.2...v0.13.0) (2026-11-15)
+
+
+### Features
+
+* **media-cores:** derive, apply, steer and check a media CPU partition ([881f1af](https://github.com/repentsinner/tilefin-nvidia-open/commit/881f1af6f888c9b6138adc0752c9b1e66bb82c80))
+
 ## [0.12.2](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.12.1...v0.12.2) (2026-11-15)
 
 
