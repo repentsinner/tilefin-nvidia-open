@@ -54,7 +54,7 @@ jobs:
     outputs:
       build: ${{ steps.filter.outputs.build }}
     steps:
-      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v3
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
         with:
           # 'every' requires each changed file to match ALL patterns. Without
@@ -292,6 +292,14 @@ jobs:
           docker run --rm -v "$PWD:/repo:ro" -w /repo \
             rhysd/actionlint:1.7.12 -color
 
+  # Governance lint behind quality / governance. governance-lint.yml still
+  # posts `governance / lint` for the live review ruleset until the template's
+  # Review ruleset replaces it.
+  governance-lint:
+    uses: repentsinner/symphonize/.github/workflows/governance-lint.yml@c923c65b044d3ab7866520b5bfba5fca939aac6f # notation--v0.2.16
+    with:
+      readme-type: application
+
   # The single required status check (§spec:require-aggregate-check). A
   # required check has to report on every run, and a skipped job reports
   # nothing — build_push legitimately skips on documentation-only pull
@@ -316,3 +324,35 @@ jobs:
               *) echo "::error::job result: $result"; exit 1 ;;
             esac
           done
+
+  # The bug-free-happiness template's required checks. Each runs whatever its
+  # dependencies' outcome, because GitHub counts a skipped required check as
+  # passing. build_push skips on docs-only pull requests and counts as a pass.
+  # build_push takes no classify gate: it publishes Flywheel's releases.
+  governance:
+    name: quality / governance
+    needs: [governance-lint]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail when a governance job failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          jq -r 'to_entries[] | "\(.key): \(.value.result)"' <<< "$NEEDS"
+          exit 1
+
+  correctness:
+    name: quality / correctness
+    needs: [changes, build_push, static-analysis]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail when a correctness job failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          jq -r 'to_entries[] | "\(.key): \(.value.result)"' <<< "$NEEDS"
+          exit 1

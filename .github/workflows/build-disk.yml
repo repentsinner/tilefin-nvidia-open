@@ -88,7 +88,9 @@ jobs:
 
       - name: Build disk images
         id: build
-        uses: osbuild/bootc-image-builder-action@main
+        # Pinned to main: the action's only release, v0.0.2, predates the
+        # main this workflow has been running, so pinning it would downgrade.
+        uses: osbuild/bootc-image-builder-action@028e4d28330efe546229eb9cb52aee78174d2347 # main 2026-09-28
         with:
           builder-image: ${{ env.BIB_IMAGE }}
           # Absolute path on purpose. The action passes this straight to
