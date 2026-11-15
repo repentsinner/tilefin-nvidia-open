@@ -1,0 +1,137 @@
+---
+# The merge gate. Branch rulesets require the `quality / <class>` summary
+# jobs at the bottom, never the jobs that do the work, so jobs here can be
+# added, split or renamed without touching a ruleset
+# (§spec:require-aggregate-check). Publishing lives in build.yml
+# (§spec:quality-publish-split).
+name: quality
+
+on:
+  pull_request:
+    branches:
+      - main
+  # A required check that does not run inside the merge queue never reports,
+  # and the queue waits on it forever. changes is pull_request-only, so the
+  # image builds in the queue too; image.yml publishes nothing here.
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  classify:
+    runs-on: ubuntu-latest
+    outputs:
+      derived_release_commit: ${{ steps.classify.outputs.derived_release_commit }}
+      promotion_pr: ${{ steps.classify.outputs.promotion_pr }}
+    steps:
+      - id: classify
+        uses: point-source/flywheel/classify@59758d1940ebe054ce9fdd4b7a7dc79a0cf235e0 # v2.1.0
+
+  changes:
+    name: Detect changes
+    needs: classify
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      build: ${{ steps.filter.outputs.build }}
+    steps:
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          # 'every' requires each changed file to match ALL patterns. Without
+          # it the default 'some' applies, '**' matches everything, and the
+          # negations below are ignored — so the skip never fires and every
+          # docs-only PR pays a full image build (~27 min on PR #79).
+          predicate-quantifier: 'every'
+          filters: |
+            build:
+              - '**'
+              - '!*.md'
+              - '!LICENSE'
+              - '!.github/**'
+              - '!disk_config/**'
+              - '!cosign.*'
+              - '!.flywheel.yml'
+              - '!version.txt'
+              - '!artifacthub-repo.yml'
+
+  # Builds the image without pushing it. Skips on documentation-only pull
+  # requests, which the correctness summary counts as a pass.
+  image:
+    needs: [classify, changes]
+    if: >-
+      !cancelled()
+      && needs.classify.result == 'success'
+      && needs.classify.outputs.derived_release_commit != 'true'
+      && needs.classify.outputs.promotion_pr != 'true'
+      && (github.event_name != 'pull_request' || needs.changes.outputs.build == 'true')
+    uses: ./.github/workflows/image.yml
+    with:
+      publish: false
+
+  static-analysis:
+    name: Static analysis
+    needs: classify
+    if: needs.classify.outputs.derived_release_commit != 'true' && needs.classify.outputs.promotion_pr != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5
+      # build.sh is the image: ~500 lines of shell that nothing else
+      # validates. Pinned images so the tool versions do not drift.
+      - name: shellcheck
+        run: |
+          docker run --rm -v "$PWD:/mnt:ro" -w /mnt \
+            koalaman/shellcheck:v0.11.0 \
+            --severity=warning build_files/*.sh test/*.sh
+      # An unparseable workflow reports as a zero-job failed run with no
+      # error text, which is how auto-merge-release.yml stayed broken from
+      # its first commit. actionlint names the file, line and column.
+      - name: actionlint
+        run: |
+          docker run --rm -v "$PWD:/repo:ro" -w /repo \
+            rhysd/actionlint:1.7.12 -color
+
+  governance-lint:
+    needs: classify
+    if: needs.classify.outputs.derived_release_commit != 'true' && needs.classify.outputs.promotion_pr != 'true'
+    uses: repentsinner/symphonize/.github/workflows/governance-lint.yml@c923c65b044d3ab7866520b5bfba5fca939aac6f # notation--v0.2.16
+    with:
+      readme-type: application
+
+  # Summary jobs carry the required check names. Each runs whatever its
+  # dependencies' outcome, because GitHub counts a skipped required check as
+  # passing. classify is a dependency too: if it fails, the class jobs skip.
+  governance:
+    name: quality / governance
+    needs: [classify, governance-lint]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail when a governance job failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          jq -r 'to_entries[] | "\(.key): \(.value.result)"' <<< "$NEEDS"
+          exit 1
+
+  correctness:
+    name: quality / correctness
+    needs: [classify, changes, image, static-analysis]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail when a correctness job failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          jq -r 'to_entries[] | "\(.key): \(.value.result)"' <<< "$NEEDS"
+          exit 1
