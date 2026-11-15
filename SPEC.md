@@ -1797,7 +1797,7 @@ The image contains `/usr/sbin/ptp4l` and `/usr/sbin/phc2sys`, with
 
 ## Media CPU partition §spec:media-cpu-partition
 
-*Status: not started*
+*Status: in progress*
 
 ### Problem
 
@@ -1945,6 +1945,11 @@ it running as a finding.
 
 It exits non-zero when a movable IRQ intersects the isolated set, and
 prints that no partition is set when the command line carries none.
+
+A managed IRQ shows only by refusing an affinity write, which a read-only
+check cannot make. The steering unit records the IRQs that refused its
+write in `/run/tilefin/managed-irqs`, and the check reads that record, so
+before the unit has run every IRQ reads as movable.
 
 ## NVIDIA DRM modesetting §spec:nvidia-drm-modeset
 

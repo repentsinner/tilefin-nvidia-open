@@ -594,3 +594,62 @@ setup-gpu-passthrough:
 
     echo ""
     echo "Log out and back in for the desktop and group changes to take effect."
+
+# Isolate CPUs for paced media threads near a NIC or GPU, or --remove the partition (anchor cores | --remove)
+media-cores anchor="" cores="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # §spec:media-cores-partition. The derivation reads only; this recipe
+    # applies its kernel arguments on confirmation, and never reboots.
+    SCRIPT="${TILEFIN_MEDIA_CORES:-/usr/share/tilefin/scripts/media-cores.sh}"
+
+    # The partition's arguments already on the deployment, as rpm-ostree
+    # deletes take them: whole words, value and all.
+    current=()
+    for word in $(rpm-ostree kargs); do
+        case "$word" in
+            irqaffinity=*|isolcpus=*|nohz_full=*|rcu_nocbs=*) current+=("--delete=$word") ;;
+        esac
+    done
+
+    if [ "{{ anchor }}" = "--remove" ]; then
+        if [ "${#current[@]}" -eq 0 ]; then
+            echo "No partition is set; nothing to remove."
+            exit 0
+        fi
+        echo "==> Removing the partition's kernel arguments (needs sudo)..."
+        sudo rpm-ostree kargs "${current[@]}"
+        echo "Removed. The partition stays in force until the next reboot."
+        exit 0
+    fi
+
+    if [ -z "{{ anchor }}" ] || [ -z "{{ cores }}" ]; then
+        echo "Usage: ujust media-cores <interface|pci-address> <physical-cores>"
+        echo "       ujust media-cores --remove"
+        echo ""
+        echo "Network interfaces:"
+        ls /sys/class/net | grep -v '^lo$' | sed 's/^/  /'
+        exit 1
+    fi
+
+    derived="$("$SCRIPT" derive "{{ anchor }}" "{{ cores }}")"
+    echo "$derived"
+    echo ""
+    read -ra kargs <<<"$(sed -n 's/^kargs: //p' <<<"$derived")"
+    echo "The isolated CPUs leave the general pool: builds and other parallel"
+    echo "work stop using them. The partition takes effect at the next boot."
+    gum confirm "Apply these kernel arguments?" || exit 0
+
+    append=()
+    for arg in "${kargs[@]}"; do append+=("--append=$arg"); done
+    echo "==> Writing the partition as local kernel arguments (needs sudo)..."
+    sudo rpm-ostree kargs "${current[@]}" "${append[@]}"
+    echo "Applied. Reboot when convenient, then run: ujust check-media-cores"
+
+# Report the media CPU partition and any IRQ on its isolated set; changes nothing
+check-media-cores:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # §spec:media-cores-check
+    exec "${TILEFIN_MEDIA_CORES:-/usr/share/tilefin/scripts/media-cores.sh}" check

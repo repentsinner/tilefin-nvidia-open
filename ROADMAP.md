@@ -101,33 +101,12 @@ Ready. A throwaway pod resolves `kubernetes.default`. If CoreDNS stays
 
 ## Media CPU partition §road:media-cpu-partition
 
-### Derive and apply a partition §road:media-cores-partition-recipe
+### Verify the partition on a workstation §road:media-cores-verify
 
-Add a `ujust media-cores` recipe to `build_files/tilefin.just` that
-derives the housekeeping and isolated sets from an anchor device's
-topology, prints the kernel arguments, and applies them as local kargs
-only on confirmation. No dependencies.
-Files: `build_files/tilefin.just`.
-§spec:media-cores-partition
-
-### Steer IRQs off the isolated set at boot §road:media-cores-irq-unit
-
-Ship and enable a oneshot unit that moves every movable IRQ onto the
-housekeeping set and fails on any that stays on the isolated set.
-Independent of §road:media-cores-partition-recipe; a hand-written
-partition exercises it.
-Files: `build_files/build.sh`, new unit and script under `build_files/`.
-§spec:media-cores-irq-steering §spec:media-cores-no-irqbalance
-
-### Report the partition §road:media-cores-check-recipe
-
-Add a read-only `ujust check-media-cores` recipe to
-`build_files/tilefin.just` that reports the partition, every IRQ whose
-effective affinity intersects the isolated set, and any running
-`irqbalance` or `tuned`. Depends on §road:media-cores-partition-recipe
-for the argument format.
-Files: `build_files/tilefin.just`.
-§spec:media-cores-check
+The recipes, the steering unit and the check ship in the image
+(`build_files/media-cores.sh`, `build_files/tilefin-media-cores-steer.service`,
+`build_files/tilefin.just`). What is left is the reboot that proves them.
+§spec:media-cores-partition §spec:media-cores-irq-steering §spec:media-cores-check
 
 **Verify:** On molecule, run `ujust media-cores` against the ConnectX-6
 Dx, confirm, and reboot. `/sys/devices/system/cpu/isolated` and
