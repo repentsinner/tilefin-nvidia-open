@@ -225,10 +225,15 @@ window-rule {
     saturation 0.1
 }
 
-// VS Code: open at 1600 logical pixels wide (clamped to display width)
+// Editors and browsers open at 60% of the output's width; everything else
+// keeps niri's default. Match the app IDs the apps report on Wayland:
+// com.microsoft.VSCode is VS Code (the RPM; code and code-url-handler are
+// older and other builds), app.zen_browser.zen is Zen, org.mozilla.firefox
+// is the Firefox Flatpak and firefox the RPM. Check with `niri msg windows`.
 window-rule {
-    match app-id=r#"^code"#
-    default-column-width { fixed 1600; }
+    match app-id=r#"^(com\.microsoft\.VSCode|code|code-url-handler)$"#
+    match app-id=r#"^(app\.zen_browser\.zen|org\.mozilla\.firefox|firefox)$"#
+    default-column-width { proportion 0.6; }
 }
 
 // Disable maximize-on-open behaviors globally (niri 25.11 workaround)
