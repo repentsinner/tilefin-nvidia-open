@@ -13,3 +13,8 @@ updates:
       github-actions-minor-patch:
         patterns: ["*"]
         update-types: [minor, patch]
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: chore
+      include: scope
