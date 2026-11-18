@@ -1,0 +1,11 @@
+# Set a NIC's Max Read Request Size for peer-to-peer DMA from GPU memory and
+# record the read-back in /run/tilefin/p2p-pcie (§spec:p2p-pcie-read-request).
+# Started by 80-tilefin-p2p-pcie.rules for one PCI device; the script acts
+# only on the NIC that /etc/tilefin/p2p-pcie.conf names.
+[Unit]
+Description=Set the peer-to-peer read request size on PCI device %I
+ConditionPathExists=/etc/tilefin/p2p-pcie.conf
+
+[Service]
+Type=oneshot
+ExecStart=/usr/share/tilefin/scripts/p2p-pcie.sh apply %I

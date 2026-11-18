@@ -89,6 +89,7 @@ SYSTEM_UTILS=(
     linuxptp                  # ptp4l/phc2sys — PTP clock sync for ST2110 (§spec:ptp)
     libatomic                 # GCC runtime for vendored binaries (§spec:host-runtime-libs)
     docker-compose            # `podman compose` provider (§spec:compose-provider)
+    pciutils                  # setpci for the P2P NIC read request size (§spec:p2p-pcie-read-request)
 )
 
 SYSTEM_THEMING=(
@@ -488,6 +489,15 @@ systemctl enable libvirt-guests.service
 install -Dm755 /ctx/media-cores.sh /usr/share/tilefin/scripts/media-cores.sh
 install -Dm644 /ctx/tilefin-media-cores-steer.service /usr/lib/systemd/system/tilefin-media-cores-steer.service
 systemctl enable tilefin-media-cores-steer.service
+
+# P2P PCIe mode (§spec:p2p-pcie). The image carries the mechanism and no PCI
+# addresses: `ujust p2p-pcie` writes a machine's root ports as a local kernel
+# argument and its NIC to /etc/tilefin/p2p-pcie.conf, and the udev rule acts
+# only while that file exists. The template unit has no [Install] section;
+# the rule starts it.
+install -Dm755 /ctx/p2p-pcie.sh /usr/share/tilefin/scripts/p2p-pcie.sh
+install -Dm644 /ctx/tilefin-p2p-pcie@.service /usr/lib/systemd/system/tilefin-p2p-pcie@.service
+install -Dm644 /ctx/80-tilefin-p2p-pcie.rules /usr/lib/udev/rules.d/80-tilefin-p2p-pcie.rules
 
 # Raise memlock limit for GPU/RDMA workloads (nvidia_p2p_get_pages,
 # ibv_reg_mr). Applies to all users in wheel group.

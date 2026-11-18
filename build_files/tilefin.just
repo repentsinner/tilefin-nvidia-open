@@ -415,11 +415,21 @@ setup-gpu-passthrough:
     SYSFS="${TILEFIN_SYSFS:-/sys}"
     CPUINFO="${TILEFIN_CPUINFO:-/proc/cpuinfo}"
     ETC="${TILEFIN_ETC:-/etc}"
+    CMDLINE="${TILEFIN_PROC:-/proc}/cmdline"
     ASSUME_YES="${TILEFIN_ASSUME_YES:-}"
     VIRSH=(virsh --connect qemu:///system)
     NVIDIA_VENDOR="0x10de"
     WORKSPACE="vm"
     MIB=$((1024 * 1024))
+
+    # P2P PCIe mode turns ACS redirect off, and the kernel then merges IOMMU
+    # groups, so no group isolates the GPU (§spec:p2p-pcie-exclusion).
+    if [ -e "$ETC/tilefin/p2p-pcie.conf" ] || grep -q 'pci=[^ ]*disable_acs_redir=' "$CMDLINE"; then
+        echo "P2P PCIe mode is set: ACS redirect is off and IOMMU groups merge," >&2
+        echo "so a VM cannot take the GPU alone. Run ujust p2p-pcie --remove," >&2
+        echo "reboot, then run this again." >&2
+        exit 1
+    fi
 
     INTERACTIVE=false
     [ -t 0 ] && INTERACTIVE=true
@@ -653,3 +663,82 @@ check-media-cores:
     set -euo pipefail
     # §spec:media-cores-check
     exec "${TILEFIN_MEDIA_CORES:-/usr/share/tilefin/scripts/media-cores.sh}" check
+
+# Configure PCIe for a NIC that DMAs to GPU memory, or --remove it (gpu nic | --remove)
+p2p-pcie gpu="" nic="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # §spec:p2p-pcie-derivation. The derivation reads only; this recipe
+    # applies on confirmation, and never reboots.
+    SCRIPT="${TILEFIN_P2P_PCIE:-/usr/share/tilefin/scripts/p2p-pcie.sh}"
+    ETC="${TILEFIN_ETC:-/etc}"
+    CONF="$ETC/tilefin/p2p-pcie.conf"
+
+    # The kernel keeps only the last disable_acs_redir it parses, so the
+    # mode owns every pci=disable_acs_redir= word on the deployment.
+    current=()
+    for word in $(rpm-ostree kargs); do
+        case "$word" in
+            pci=disable_acs_redir=*) current+=("--delete=$word") ;;
+            pci=*disable_acs_redir=*)
+                echo "The kernel argument $word joins disable_acs_redir to other pci= options." >&2
+                echo "Split it with: sudo rpm-ostree kargs --editor, then run this again." >&2
+                exit 1
+                ;;
+        esac
+    done
+
+    if [ "{{ gpu }}" = "--remove" ]; then
+        if [ "${#current[@]}" -eq 0 ] && [ ! -e "$CONF" ]; then
+            echo "P2P PCIe mode is not set; nothing to remove."
+            exit 0
+        fi
+        echo "==> Removing the P2P PCIe kernel argument and configuration (needs sudo)..."
+        [ "${#current[@]}" -eq 0 ] || sudo rpm-ostree kargs "${current[@]}"
+        sudo rm -f "$CONF"
+        echo "Removed. ACS redirect and the NIC's read request size stay as they are until the next reboot."
+        exit 0
+    fi
+
+    if [ -z "{{ gpu }}" ] || [ -z "{{ nic }}" ]; then
+        echo "Usage: ujust p2p-pcie <gpu-pci-address> <interface|nic-pci-address>"
+        echo "       ujust p2p-pcie --remove"
+        echo ""
+        echo "GPUs and NICs:"
+        lspci -D -d ::0300 2>/dev/null | sed 's/^/  /' || true
+        lspci -D -d ::0302 2>/dev/null | sed 's/^/  /' || true
+        lspci -D -d ::0200 2>/dev/null | sed 's/^/  /' || true
+        exit 1
+    fi
+
+    derived="$("$SCRIPT" derive "{{ gpu }}" "{{ nic }}")"
+    echo "$derived"
+    echo ""
+    karg="$(sed -n 's/^kargs: //p' <<<"$derived")"
+    nic_bdf="$(sed -n 's/^nic: //p' <<<"$derived")"
+    gpu_bdf="$(sed -n 's/^gpu: //p' <<<"$derived")"
+    ports="$(sed -n 's/^root ports: //p' <<<"$derived")"
+    echo "With ACS redirect off, the root ports route peer-to-peer traffic directly,"
+    echo "and the kernel merges IOMMU groups behind them: no VM can take the GPU alone."
+    echo "The NIC's max read request size goes to 4096 bytes on every boot and driver bind."
+    echo "Both take effect at the next boot."
+    gum confirm "Apply this kernel argument and write $CONF?" || exit 0
+
+    echo "==> Writing the kernel argument and $CONF (needs sudo)..."
+    sudo rpm-ostree kargs "${current[@]}" "--append=$karg"
+    sudo install -d -m 755 "$ETC/tilefin"
+    printf '%s\n' \
+        "# Written by ujust p2p-pcie (§spec:p2p-pcie-read-request)." \
+        "GPU=$gpu_bdf" \
+        "NIC=$nic_bdf" \
+        "ROOT_PORTS=$ports" \
+        | sudo tee "$CONF" >/dev/null
+    echo "Applied. Reboot when convenient, then run: sudo ujust check-p2p-pcie"
+
+# Report P2P PCIe mode: root ports, kernel argument, IOMMU groups, read request size; changes nothing
+check-p2p-pcie:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # §spec:p2p-pcie-check
+    exec "${TILEFIN_P2P_PCIE:-/usr/share/tilefin/scripts/p2p-pcie.sh}" check
