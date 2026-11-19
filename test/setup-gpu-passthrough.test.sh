@@ -1,8 +1,9 @@
 #!/usr/bin/bash
 # Behaviour test for `ujust setup-gpu-passthrough` (§spec:passthrough-setup,
-# §spec:guest-address-width). Runs the recipe against a fake sysfs modelled on
-# an Intel iGPU + NVIDIA workstation, writing under a temporary /etc, with
-# stubs for sudo, systemctl, usermod and virsh.
+# §spec:guest-address-width, §spec:p2p-pcie-exclusion). Runs the recipe
+# against a fake sysfs and command line modelled on an Intel iGPU + NVIDIA
+# workstation, writing under a temporary /etc, with stubs for sudo,
+# systemctl, usermod and virsh.
 set -u
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -48,7 +49,8 @@ pcidev() {
 # reset [mgaw_bits] : this workstation's layout, IOMMU MGAW defaulting to 39
 reset() {
     STUB_DIR="$TMP/case.$RANDOM$RANDOM"
-    mkdir -p "$STUB_DIR/etc" "$STUB_DIR/sys/class/iommu/dmar0/intel-iommu"
+    mkdir -p "$STUB_DIR/etc" "$STUB_DIR/proc" "$STUB_DIR/sys/class/iommu/dmar0/intel-iommu"
+    echo "BOOT_IMAGE=vmlinuz root=UUID=x" > "$STUB_DIR/proc/cmdline"
     : > "$STUB_DIR/calls"
     pcidev 0000:00:02.0 0x8086 0x030000 1 0
     pcidev 0000:01:00.0 0x10de 0x030000 0 16 $((64 * GIB))
@@ -64,7 +66,8 @@ run() {
     local envs=()
     while [ "$1" != "--" ]; do envs+=("$1"); shift; done
     OUT="$(env PATH="$STUB_BIN:$PATH" USER=tester TILEFIN_SYSFS="$STUB_DIR/sys" \
-        TILEFIN_CPUINFO="$STUB_DIR/cpuinfo" TILEFIN_ETC="$STUB_DIR/etc" "${envs[@]}" \
+        TILEFIN_CPUINFO="$STUB_DIR/cpuinfo" TILEFIN_ETC="$STUB_DIR/etc" \
+        TILEFIN_PROC="$STUB_DIR/proc" "${envs[@]}" \
         just --justfile "$JUSTFILE" --working-directory "$ROOT" setup-gpu-passthrough 2>&1 </dev/null)"
     # shellcheck disable=SC2034 # read inside the condition strings check() evals
     RC=$?
@@ -93,6 +96,14 @@ check "a shared IOMMU group is refused"                    '[ $RC != 0 ] && grep
 
 reset 48; run --
 check "an IOMMU as wide as needed reports no guest change" '! grep -q "131072" <<<"$OUT"'
+
+# P2P PCIe mode merges IOMMU groups (§spec:p2p-pcie-exclusion)
+reset; mkdir -p "$STUB_DIR/etc/tilefin"; echo "NIC=0000:0b:00.0" > "$STUB_DIR/etc/tilefin/p2p-pcie.conf"
+run TILEFIN_ASSUME_YES=1 --
+check "P2P PCIe mode is refused"                           '[ $RC != 0 ] && grep -q "p2p-pcie --remove" <<<"$OUT" && [ ! -e "$(conf)" ] && [ ! -s "$STUB_DIR/calls" ]'
+reset; echo "BOOT_IMAGE=vmlinuz pci=disable_acs_redir=0000:00:1c.0" > "$STUB_DIR/proc/cmdline"
+run TILEFIN_ASSUME_YES=1 --
+check "ACS redirect off on the command line is refused"    '[ $RC != 0 ] && grep -q "P2P PCIe mode is set" <<<"$OUT" && [ ! -e "$(conf)" ]'
 
 # Applying everything
 reset; run TILEFIN_ASSUME_YES=1 TILEFIN_VM=win11 --

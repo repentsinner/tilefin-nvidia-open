@@ -1,0 +1,6 @@
+# Peer-to-peer PCIe mode: set the configured NIC's Max Read Request Size each
+# time a network controller appears or a driver binds to it, so a driver
+# reload or hot add gets it back (§spec:p2p-pcie-read-request). The service
+# reads the configuration and leaves every other device alone. Without the
+# configuration the rule matches nothing.
+ACTION=="add|bind", SUBSYSTEM=="pci", ATTR{class}=="0x02*", TEST=="/etc/tilefin/p2p-pcie.conf", RUN+="/usr/bin/systemctl --no-block restart tilefin-p2p-pcie@$kernel.service"

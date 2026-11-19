@@ -117,6 +117,28 @@ paced ST 2110 sender pinned to an isolated core shows no packet
 departures past the pacing cap caused by host interrupts, and the
 `/proc/interrupts` counts on that core stay flat for the run.
 
+## Peer-to-peer PCIe mode §road:p2p-pcie
+
+### Verify P2P PCIe mode on a workstation §road:p2p-pcie-verify
+
+The recipes, the udev rule, the template unit and the check ship in the
+image (`build_files/p2p-pcie.sh`, `build_files/80-tilefin-p2p-pcie.rules`,
+`build_files/tilefin-p2p-pcie@.service`, `build_files/tilefin.just`).
+What is left is the reboot that proves them, including the `\;` escape
+through GRUB's BLS loader.
+§spec:p2p-pcie-derivation §spec:p2p-pcie-read-request §spec:p2p-pcie-check
+
+**Verify:** On a workstation whose GPU and NIC sit under different root
+ports, run `ujust p2p-pcie` against the GPU and the NIC, confirm, and
+reboot. `/proc/cmdline` carries both root ports separated by a bare `;`,
+and the kernel log shows `Configured ACS` for each. `sudo ujust
+check-p2p-pcie` exits 0: neither root port has Request or Completion
+Redirect set, each endpoint directly below a root port shares its group,
+and the NIC reads back a 4096-byte max read request. Unbinding and
+rebinding the NIC's driver leaves the size at 4096. Eight receive and
+eight transmit 2160p60 GPU-direct flows run with no receive loss, and
+`ujust setup-gpu-passthrough` refuses.
+
 ## Per-group IOMMU identity domain §road:iommu-group-identity
 
 ### Probe a NIC-only identity domain §road:iommu-group-identity-probe

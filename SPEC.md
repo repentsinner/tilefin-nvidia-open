@@ -467,6 +467,7 @@ normal flow.
 `ujust setup-gpu-passthrough` prepares a machine and reports what
 remains. It shall:
 
+- Refuse while P2P PCIe mode is set (§spec:p2p-pcie-exclusion).
 - Report whether the integrated GPU is the boot GPU, and name the
   firmware setting when it is not (on MSI boards, Initiate Graphic
   Adapter set to IGD). The boot GPU owns the console and the greeter.
@@ -1979,6 +1980,187 @@ check cannot make. The steering unit records the IRQs that refused its
 write in `/run/tilefin/managed-irqs`, and the check reads that record, so
 before the unit has run every IRQ reads as movable.
 
+## Peer-to-peer PCIe mode §spec:p2p-pcie
+
+*Status: in progress*
+
+### Problem
+
+GPU-direct packet I/O (§spec:st2110) has the NIC write received payload
+into GPU memory and read send payload out of it. On a workstation whose
+GPU and NIC sit under different root ports, eight receive and eight
+transmit 2160p60 flows lost about 1.5% of received packets. Two settings,
+made by hand with `setpci`, removed the loss:
+
+- ACS P2P Request Redirect and Completion Redirect off on both root
+  ports. With them set, the root complex sends every peer-to-peer request
+  and completion up through the IOMMU instead of routing it from port to
+  port.
+- A Max Read Request Size of 4096 bytes on the NIC, which reads send
+  payload from GPU memory in larger requests.
+
+A `setpci` write lasts until the next boot, and a reset of the device
+can undo it sooner.
+
+### Design
+
+The image carries the mechanism, and the machine carries the choice. No
+PCI address appears in the image. `ujust p2p-pcie` writes a machine's
+root ports as a local kernel argument and its GPU, NIC and root ports to
+`/etc/tilefin/p2p-pcie.conf`. It applies both only after the operator
+confirms, it never reboots, and `ujust p2p-pcie --remove` deletes both.
+
+| Setting | Carrier | When it applies |
+| --- | --- | --- |
+| ACS redirect off on the root ports | `pci=disable_acs_redir=` local karg | At enumeration, every boot |
+| NIC Max Read Request Size 4096 | udev rule, template unit, `setpci` | Each add and bind of the NIC |
+
+#### Root port derivation §spec:p2p-pcie-derivation
+
+The operator names the GPU by PCI address and the NIC by network
+interface or PCI address. The derivation reads only sysfs:
+
+- An interface resolves to its PCI device through
+  `/sys/class/net/<interface>/device`.
+- The GPU shall be a display controller (class `0x03`) and the NIC a
+  network controller (class `0x02`), so swapped arguments are refused.
+- An endpoint's root port is the first device on its resolved path
+  (`readlink -f /sys/bus/pci/devices/<address>`) below the host bridge
+  directory `pciDDDD:BB`. Behind a switch that is not the parent bridge.
+  An endpoint directly on the root bus has no root port, and the
+  derivation refuses it.
+- Two endpoints under one root port name it once.
+
+The kernel argument is one `pci=` argument holding only
+`disable_acs_redir=`, with the ports in domain-qualified form:
+
+```text
+pci=disable_acs_redir=0000:00:1c.0\;0000:00:1d.0
+```
+
+The format follows `Documentation/admin-guide/kernel-parameters.txt`
+and `pci_setup()` in `drivers/pci/pci.c`:
+
+- The value is a list of `<pci_dev>` separated by semicolons. A
+  `<pci_dev>` is `[<domain>:]<bus>:<dev>.<func>[/<dev>.<func>]*` or
+  `pci:<vendor>:<device>[:<subvendor>:<subdevice>]`. The ID form would
+  match every root port of the same model, so the derivation writes
+  addresses.
+- `pci_setup()` splits each `pci=` value at commas, so a comma cannot
+  separate devices. It parses every `pci=` argument on its own, so other
+  `pci=` options keep working in arguments of their own.
+- The kernel keeps only the last `disable_acs_redir=` it parses. The
+  recipe therefore replaces every `pci=disable_acs_redir=` argument on
+  the deployment, and refuses one joined to other options until the
+  operator splits it.
+- `pci_enable_acs()` applies the list as each device is enumerated,
+  clearing Request Redirect, Completion Redirect and Egress Control on a
+  matching device before IOMMU groups form.
+
+The semicolon is written `\;`. GRUB's BLS loader splices the `options`
+line into a `linux` command and runs it as GRUB script (`create_entry()`
+in `grub-core/commands/blscfg.c`), where a bare `;` ends the command and
+drops the rest of the command line. GRUB removes the backslash, so
+`rpm-ostree kargs` shows `\;` and `/proc/cmdline` shows `;`. Red Hat's
+`10_linux.in` escapes `;` in BLS options for the same reason. A single
+root port needs no separator.
+
+*Why a kernel argument*: the kernel derives IOMMU groups from ACS at
+enumeration. A runtime write leaves groups that describe isolation the
+ports no longer enforce, and a reset of a root port restores redirect.
+*Rejected*: `setpci` from a boot unit, for both reasons.
+*Rejected*: `pci=config_acs=`, which takes the same separator and states
+seven flags where this needs two.
+
+#### NIC read request size §spec:p2p-pcie-read-request
+
+No kernel argument sets an arbitrary Max Read Request Size:
+`pci=pcie_bus_perf` only caps it at the Max Payload Size. The image ships
+three pieces, inert on a machine without the configuration:
+
+- `80-tilefin-p2p-pcie.rules` matches a network-class PCI device on
+  `add` and `bind` while `/etc/tilefin/p2p-pcie.conf` exists, and
+  restarts `tilefin-p2p-pcie@<address>.service`.
+- The template unit runs `p2p-pcie.sh apply <address>`, which acts only
+  on the configured NIC. It writes `CAP_EXP+8.w=5000:7000` (Device
+  Control bits 14:12 = `101b`, 4096 bytes), reads Device Control back,
+  and fails when the size reads back as anything else.
+- The same run writes the read-back, and each configured root port's
+  ACS Control, to `/run/tilefin/p2p-pcie/<address>`. An unprivileged
+  process reads only the first 64 bytes of configuration space, and both
+  registers lie past them, so this record is how an unprivileged check
+  sees them.
+
+The configuration holds one `KEY=value` a line, read with `sed` and never
+sourced, because a root unit reads it:
+
+```text
+GPU=0000:0a:00.0
+NIC=0000:0b:00.0
+ROOT_PORTS=0000:00:1c.0 0000:00:1d.0
+```
+
+*Why a udev rule*: a driver reload and a hot add each emit `bind` or
+`add`, and the rule applies the size again. `bind` follows the driver's
+probe, so a driver that sets its own read request size at probe is
+overridden. The rule starts a unit rather than running `setpci` itself,
+so a failure shows in `systemctl --failed` and the journal names it.
+*Rejected*: a boot-time oneshot, which a driver reload undoes until the
+next boot.
+
+*Limit*: a recovery that restores saved state, such as AER recovery,
+writes back Device Control as the driver last saved it, which can
+predate the write, and emits no udev event. The live read in
+§spec:p2p-pcie-check shows it.
+`systemctl restart tilefin-p2p-pcie@<address>.service` applies the size
+again.
+
+#### Exclusion with GPU passthrough §spec:p2p-pcie-exclusion
+
+P2P PCIe mode and GPU passthrough (§spec:gpu-passthrough) shall not both
+be set on one machine. With redirect off, the kernel no longer counts
+the path through a root port as isolated, and puts each endpoint below
+it in the root port's IOMMU group (`pci_device_group()` in
+`drivers/iommu/iommu.c`). A VM then cannot take the GPU's group without
+the bridge, and §spec:passthrough-setup refuses a group with devices
+other than the GPU's own functions.
+
+- `ujust p2p-pcie` shall refuse while the passthrough designation
+  `/etc/tilefin/gpu-passthrough.conf` (§spec:passthrough-desktop-gpu)
+  exists, and name the files to delete.
+- `ujust setup-gpu-passthrough` shall refuse while
+  `/etc/tilefin/p2p-pcie.conf` exists or `/proc/cmdline` carries
+  `disable_acs_redir`. The command line covers the boot between
+  `ujust p2p-pcie --remove` and the reboot that ends it.
+
+#### Mode check §spec:p2p-pcie-check
+
+`ujust check-p2p-pcie` reports, and changes nothing:
+
+- The configured GPU, NIC and root ports, and whether the root ports
+  derived from the live topology still match them.
+- Whether each root port is in the last `disable_acs_redir=` list on
+  `/proc/cmdline`.
+- Each endpoint's IOMMU group, whether it shares that group with its
+  root port, and whether the GPU and the NIC share one. An endpoint
+  directly below its root port and apart from its group means redirect
+  is still on. Behind a switch, the switch's downstream port can keep
+  ACS of its own, so the group is reported and not judged.
+- The record in `/run/tilefin/p2p-pcie`: the NIC's read request size and
+  each root port's ACS Control.
+- Run as root, the live ACS Control Request and Completion Redirect bits
+  (`setpci -s <port> ECAP_ACS+6.w`) and the NIC's read request size
+  (`setpci -s <nic> CAP_EXP+8.w`).
+
+It exits non-zero when any of these is off. Without the configuration it
+prints that the mode is not set and exits 0, unless the command line
+still carries `disable_acs_redir`.
+
+Whether the GPU and the NIC share a group is reported and not checked.
+The kernel merges two root ports' groups only when the ports are DMA
+aliases or functions of one multifunction slot, so ports in separate
+slots keep separate groups with redirect off.
+
 ## NVIDIA DRM modesetting §spec:nvidia-drm-modeset
 
 *Status: complete*
@@ -2882,7 +3064,9 @@ was never run. Harmless, and recorded so the comparison is complete.
 
 A media CPU partition (§spec:media-cpu-partition) adds local arguments on
 purpose. They describe one machine's cores, so they belong to the machine,
-and `ujust check-media-cores` reports them as such.
+and `ujust check-media-cores` reports them as such. P2P PCIe mode
+(§spec:p2p-pcie) adds one more for the same reason, its root ports, and
+`ujust check-p2p-pcie` reports it.
 
 Compare `rpm-ostree kargs` against `build_files/build.sh` after any
 incident that prompts a configuration change, and treat an unexplained
