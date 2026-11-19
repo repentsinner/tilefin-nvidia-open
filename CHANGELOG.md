@@ -1,3 +1,10 @@
+# [0.14.0](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.13.1...v0.14.0) (2026-11-19)
+
+
+### Features
+
+* **p2p-pcie:** configure root port ACS and NIC read requests for GPU-direct DMA ([072c52d](https://github.com/repentsinner/tilefin-nvidia-open/commit/072c52dc67ceb8cadc7a9b81c544f0a5ad5e3cdf))
+
 ## [0.13.1](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.13.0...v0.13.1) (2026-11-15)
 
 
