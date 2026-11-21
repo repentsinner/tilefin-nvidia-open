@@ -225,14 +225,18 @@ window-rule {
     saturation 0.1
 }
 
-// Editors and browsers open at 60% of the output's width; everything else
-// keeps niri's default. Match the app IDs the apps report on Wayland:
-// com.microsoft.VSCode is VS Code (the RPM; code and code-url-handler are
-// older and other builds), app.zen_browser.zen is Zen, org.mozilla.firefox
-// is the Firefox Flatpak and firefox the RPM. Check with `niri msg windows`.
+// Editors, browsers and the Rove CNC controller open at 60% of the output's
+// width; everything else keeps niri's default. Match the app IDs the apps
+// report on Wayland: com.microsoft.VSCode is VS Code (the RPM; code and
+// code-url-handler are older and other builds), app.zen_browser.zen is Zen,
+// org.mozilla.firefox is the Firefox Flatpak and firefox the RPM, and
+// com.rovecnc.rove is Rove, with .pro for its pro edition. Under XWayland
+// Rove reports a capitalized ID, so the first letter matches either case.
+// Check with `niri msg windows`.
 window-rule {
     match app-id=r#"^(com\.microsoft\.VSCode|code|code-url-handler)$"#
     match app-id=r#"^(app\.zen_browser\.zen|org\.mozilla\.firefox|firefox)$"#
+    match app-id=r#"^[Cc]om\.rovecnc\.rove(\.pro)?$"#
     default-column-width { proportion 0.6; }
 }
 
