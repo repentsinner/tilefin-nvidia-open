@@ -142,7 +142,7 @@ jobs:
   security-checks:
     needs: classify
     if: needs.classify.outputs.derived_release_commit != 'true' && needs.classify.outputs.promotion_pr != 'true'
-    uses: repentsinner/bug-free-happiness/.github/workflows/security.yml@d55f28fb964df6437c327ce4fa5892e686c001e2 # v0.6.0
+    uses: repentsinner/bug-free-happiness/.github/workflows/security.yml@982bf670d9d2d8921afa20c2ae3c7d613ea2feab # v0.8.1
 
   # Not a required check yet: the template requires it once every adopter
   # emits it with real signal.
